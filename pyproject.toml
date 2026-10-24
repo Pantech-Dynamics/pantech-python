@@ -1,0 +1,92 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pantech"
+version = "0.1.0"
+description = "The official Python SDK for the Pantech Dynamics public API."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Pantech Dynamics" }]
+requires-python = ">=3.9"
+dependencies = ["httpx>=0.25,<1"]
+keywords = ["pantech", "pantech dynamics", "cloud", "api", "sdk", "vps", "kubernetes"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Systems Administration",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://pantechdynamics.com"
+Documentation = "https://docs.pantechdynamics.com/sdks/python"
+Repository = "https://github.com/Pantech-Dynamics/pantech-python"
+Issues = "https://github.com/Pantech-Dynamics/pantech-python/issues"
+Changelog = "https://github.com/Pantech-Dynamics/pantech-python/blob/main/CHANGELOG.md"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "mypy>=1.10",
+    "ruff>=0.6",
+    "pyyaml>=6",
+    "types-PyYAML",
+    "build>=1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pantech"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/pantech", "tests", "scripts", "openapi", "examples", "README.md", "CHANGELOG.md", "LICENSE"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+src = ["src", "scripts", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF"]
+ignore = [
+    "UP006", # List/Dict: the generated types stay importable on 3.9 without the future import
+    "UP007", # Optional/Union, same reason
+    "UP035",
+    "UP045",
+    "RUF001", # "›" in console menu paths is intended
+    "RUF002",
+    "RUF022", # __all__ is grouped by meaning, not sorted
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "S603", "B017"]
+"examples/**" = ["S104", "S105"]
+"scripts/**" = ["S603"]
+"src/pantech/resources/_*.py" = ["E501"]
+"src/pantech/types/_generated.py" = ["E501"]
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
+files = ["src/pantech"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = ["error"]

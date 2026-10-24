@@ -1,0 +1,68 @@
+name: Spec drift
+
+# Weekly: fetches the published public API spec, regenerates the types and
+# resources, and opens a pull request if anything changed. The spec-coverage
+# test then runs; it fails, naming the operation, when a new one needs a method
+# name in src/pantech/_operations.py (add it on the pull request's branch).
+
+on:
+  schedule:
+    - cron: "17 6 * * 1" # Mondays 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Override with the repository variable PANTECH_SPEC_URL.
+  SPEC_URL: ${{ vars.PANTECH_SPEC_URL || 'https://docs.pantechdynamics.com/openapi/public-api.yaml' }}
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the spec-drift branch
+      pull-requests: write # open the pull request
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.13"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pytest pytest-asyncio ruff pyyaml
+      - name: Fetch the published spec
+        run: python scripts/sync_spec.py "$SPEC_URL"
+      - name: Regenerate
+        run: |
+          python scripts/generate_types.py
+          python scripts/generate_resources.py || echo "::warning::regeneration needs a table update"
+      - id: diff
+        name: Anything changed?
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "The SDK matches the published spec."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git diff --stat
+          fi
+      - name: Open a pull request
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7.0.11
+        with:
+          branch: spec-drift
+          delete-branch: true
+          title: "Update to the latest public API spec"
+          commit-message: "Update to the latest public API spec"
+          body: |
+            The published spec at ${{ env.SPEC_URL }} changed. This regenerates
+            `src/pantech/types/_generated.py` and the resource classes.
+
+            Before merging: check the diff for new operations and method names, and add a
+            CHANGELOG entry under `## Unreleased`.
+      - name: Spec coverage (fails when a new operation needs a method name)
+        if: steps.diff.outputs.changed == 'true'
+        run: pytest -q tests/test_spec_coverage.py
