@@ -1,41 +1,98 @@
 name: Release
 
-# Builds the sdist and wheel for a vX.Y.Z tag and publishes them to PyPI with
-# Trusted Publishing (OIDC): no API token is stored anywhere. Runs from
-# auto-release.yml, or on a tag pushed by hand.
+# Publishes the package to PyPI with Trusted Publishing (OIDC): no API token
+# is stored anywhere.
+#
+# A push to main that adds a new version heading to CHANGELOG.md releases that
+# version: rename "## Unreleased" to the version (e.g. ## 0.2.0 (2026-11-02))
+# and bump `version` in pyproject.toml and src/pantech/_version.py in the same
+# change. A push whose newest CHANGELOG version is already tagged releases
+# nothing, so ordinary pushes are quiet. Pushing a vX.Y.Z tag by hand releases
+# that tag.
+#
+# Everything runs in this one workflow on purpose: PyPI's Trusted Publishing
+# does not support publishing from a reusable (called) workflow.
 
 on:
   push:
+    branches: [main]
     tags: ["v*.*.*"]
-  workflow_call:
-    inputs:
-      version:
-        description: "The tag to release, e.g. v0.1.0"
-        required: true
-        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ inputs.version || github.ref_name }}
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the version tag
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.version.outputs.release }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+
+      - id: version
+        name: Pick the version to release
+        shell: bash
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ "$REF_TYPE" = "tag" ]; then
+            echo "version=$REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          number=$(grep -m1 -oE '^## [0-9]+\.[0-9]+\.[0-9]+ ' CHANGELOG.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)
+          if [ -z "$number" ]; then
+            echo "No version heading in CHANGELOG.md; nothing to release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          version="v$number"
+          if git rev-parse -q --verify "refs/tags/$version" >/dev/null; then
+            echo "$version is already released; nothing to do."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          declared=$(grep -m1 -E '^version = ' pyproject.toml | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          if [ "$declared" != "$number" ]; then
+            echo "::error::CHANGELOG.md says $number but pyproject.toml says $declared. Bump both together."
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$version" -m "$version"
+          git push origin "$version"
+          echo "Tagged $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "release=true" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: version
+    if: needs.version.outputs.release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          ref: ${{ inputs.version || github.ref }}
+          ref: ${{ needs.version.outputs.version }}
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.13"
       - name: The tag matches the package version
         shell: bash
         env:
-          TAG: ${{ inputs.version || github.ref_name }}
+          TAG: ${{ needs.version.outputs.version }}
         run: |
           set -euo pipefail
           declared=$(grep -m1 -E '^version = ' pyproject.toml | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
@@ -61,7 +118,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: build
+    needs: [version, build]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
@@ -78,7 +135,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
 
   github-release:
-    needs: publish
+    needs: [version, publish]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -86,7 +143,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          ref: ${{ inputs.version || github.ref }}
+          ref: ${{ needs.version.outputs.version }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: dist
@@ -95,7 +152,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.version || github.ref_name }}
+          TAG: ${{ needs.version.outputs.version }}
         run: |
           set -euo pipefail
           number="${TAG#v}"

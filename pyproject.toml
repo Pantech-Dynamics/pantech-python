@@ -10,7 +10,7 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Pantech Dynamics" }]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = ["httpx>=0.25,<1"]
 keywords = ["pantech", "pantech dynamics", "cloud", "api", "sdk", "vps", "kubernetes"]
 classifiers = [
@@ -21,11 +21,11 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Internet :: WWW/HTTP",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: System :: Systems Administration",
@@ -58,7 +58,7 @@ include = ["src/pantech", "tests", "scripts", "openapi", "examples", "README.md"
 
 [tool.ruff]
 line-length = 120
-target-version = "py39"
+target-version = "py310"
 src = ["src", "scripts", "tests"]
 
 [tool.ruff.lint]
@@ -81,7 +81,7 @@ ignore = [
 "src/pantech/types/_generated.py" = ["E501"]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 strict = true
 files = ["src/pantech"]
 

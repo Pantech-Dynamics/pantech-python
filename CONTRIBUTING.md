@@ -7,7 +7,7 @@ issue.
 
 ## Development setup
 
-You need Python 3.9 or newer.
+You need Python 3.10 or newer.
 
 ```sh
 git clone https://github.com/Pantech-Dynamics/pantech-python
@@ -18,7 +18,7 @@ python3 -m venv .venv
 
 ## Checks
 
-Run these before opening a pull request; CI runs the same ones on Python 3.9 to 3.13.
+Run these before opening a pull request; CI runs the same ones on Python 3.10 to 3.14.
 
 ```sh
 .venv/bin/ruff check .
@@ -70,7 +70,7 @@ missing. Commit the generated files, and never edit them by hand: change the gen
 - Every write goes through `request()`, which sends the Idempotency-Key and reuses it on retry. A
   route the API does not replay goes in `NO_REPLAY`.
 - Never log or print the API key, and never put it in a URL or a `repr`.
-- Stay compatible with Python 3.9 (`from __future__ import annotations`, `Optional`, `List`).
+- Stay compatible with Python 3.10 (`from __future__ import annotations`, `Optional`, `List`).
 - Renaming a public method is a breaking change.
 - Add tests for every change in behaviour.
 - A change users will notice gets a line under `## Unreleased` in `CHANGELOG.md`, in the same pull
@@ -80,5 +80,5 @@ missing. Commit the generated files, and never edit them by hand: change the gen
 
 Maintainers release by renaming `## Unreleased` in `CHANGELOG.md` to `## X.Y.Z (YYYY-MM-DD)` and
 bumping `version` in `pyproject.toml` and `src/pantech/_version.py` to match, in the same change.
-On push to `main`, the auto-release workflow tags `vX.Y.Z` if it is new, publishes the package to
+On push to `main`, the release workflow tags `vX.Y.Z` if it is new, publishes the package to
 PyPI with Trusted Publishing, and creates a GitHub release whose notes are that section.

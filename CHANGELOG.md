@@ -2,7 +2,7 @@
 
 All notable changes to the `pantech` package. The newest version heading
 (`## X.Y.Z (YYYY-MM-DD)`) is released when it reaches `main`: see
-`.github/workflows/auto-release.yml`. Put work in progress under `## Unreleased`.
+`.github/workflows/release.yml`. Put work in progress under `## Unreleased`.
 
 ## 0.1.0 (2026-10-24)
 

@@ -12,7 +12,7 @@ managed Kubernetes, SSH keys, webhooks, billing and usage.
 - Every operation in the public API, with typed keyword arguments and TypedDict results
 - Automatic `Idempotency-Key`s, safe retries, cursor pagination, operation and order waiting
 - Webhook signature verification
-- One dependency: `httpx`. Python 3.9+.
+- One dependency: `httpx`. Python 3.10+.
 
 Full documentation: https://docs.pantechdynamics.com/sdks/python
 
