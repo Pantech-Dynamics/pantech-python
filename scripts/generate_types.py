@@ -2,8 +2,9 @@
 
     .venv/bin/python scripts/generate_types.py
 
-Every schema in the spec becomes a TypedDict; required keys are required,
-the rest optional. Inline request and response objects are named after their
+Every schema in the spec becomes a TypedDict, except those only the
+operations in ``NOT_IN_SDK`` use; required keys are required, the rest
+optional. Inline request and response objects are named after their
 operation (``OpenInstanceConsoleResponse``). Commit the output.
 """
 
@@ -11,7 +12,7 @@ from __future__ import annotations
 
 import sys
 
-from _codegen import TypeRegistry, build_operations, ruff_format
+from _codegen import TypeRegistry, build_operations, not_in_sdk, ruff_format, schemas_only_for
 from _spec import ROOT, load_spec
 
 OUT = ROOT / "src" / "pantech" / "types" / "_generated.py"
@@ -32,8 +33,9 @@ __all__ = [
 
 def build() -> str:
     reg = TypeRegistry(load_spec())
-    reg.build_components()
-    build_operations(reg)
+    skip = not_in_sdk()
+    reg.build_components(skip=schemas_only_for(reg.spec, skip))
+    build_operations(reg, skip)
     names = "\n".join(f'    "{n}",' for n in sorted(reg.order))
     return ruff_format(HEADER.format(names=names) + reg.render() + "\n", str(OUT))
 

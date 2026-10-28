@@ -7,6 +7,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Dict, Iterator, List, Literal, Optional, Union, cast
 
 from .._resource import (
+    CloudConnectionWaiter,
+    CloudScanWaiter,
     DatabaseOrderWaiter,
     InstanceOrderWaiter,
     OperationsWaiter,
@@ -19,6 +21,10 @@ from .._types import NOT_GIVEN, Body, Headers, NotGiven, Query, Timeout
 from ..types._generated import (
     Accepted,
     ApplyKubernetesManifestResponse,
+    CloudConnection,
+    CloudConnectionList,
+    CloudScan,
+    CloudScanList,
     CreditOutlook,
     CreditPurchase,
     Database,
@@ -60,6 +66,9 @@ from ..types._generated import (
     LoadBalancerList,
     Me,
     MetricsSeries,
+    Migration,
+    MigrationList,
+    MigrationTerraform,
     MonthlyQuote,
     Network,
     NetworkList,
@@ -988,6 +997,7 @@ class InstancesResource(InstanceOrderWaiter):
         network_id: Union[str, NotGiven] = NOT_GIVEN,
         security_group_id: Union[str, NotGiven] = NOT_GIVEN,
         tags: Union[Dict[str, str], NotGiven] = NOT_GIVEN,
+        agent_enabled: Union[bool, NotGiven] = NOT_GIVEN,
         idempotency_key: Optional[str] = None,
         extra_headers: Optional[Headers] = None,
         extra_query: Optional[Query] = None,
@@ -1015,6 +1025,10 @@ class InstancesResource(InstanceOrderWaiter):
               subnet must belong to it.
           security_group_id: Standard instances only: one of your security groups.
           tags: Your own labels, as string keys and values.
+          agent_enabled: Installs the Pantech agent when the instance first boots and
+              connects it to your organization, so agent sessions (`POST
+              /public/v1/instances/{instance_id}/agent-sessions`) can start with no login to the
+              instance.
         """
         return cast(
             "OrderAccepted",
@@ -1034,6 +1048,7 @@ class InstancesResource(InstanceOrderWaiter):
                         "network_id": network_id,
                         "security_group_id": security_group_id,
                         "tags": tags,
+                        "agent_enabled": agent_enabled,
                     },
                     extra_body,
                 ),
@@ -2815,6 +2830,7 @@ class LoadBalancersResource(SyncResource):
         name: str,
         public_port: int,
         zone_id: Union[str, NotGiven] = NOT_GIVEN,
+        protocol: Union[Literal["tcp"], NotGiven] = NOT_GIVEN,
         kind: Union[Literal["vpc_native", "appliance"], NotGiven] = NOT_GIVEN,
         public_ip_id: Union[str, NotGiven] = NOT_GIVEN,
         subnet_id: Union[str, NotGiven] = NOT_GIVEN,
@@ -2834,7 +2850,9 @@ class LoadBalancersResource(SyncResource):
 
         Args:
           name: 1 to 63 characters.
-          zone_id: The zone to place the load balancer in.
+          zone_id: The zone to place the load balancer in, by its code as `GET
+              /public/v1/regions` lists it.
+          protocol: The listener protocol.
           kind: `vpc_native` (a VPC zone: needs `public_ip_id` and `subnet_id`) or
               `appliance` (a standard zone: needs `zone_id`; a load balancer VM with its own
               public address, billed as that VM).
@@ -2858,6 +2876,7 @@ class LoadBalancersResource(SyncResource):
                     {
                         "name": name,
                         "zone_id": zone_id,
+                        "protocol": protocol,
                         "kind": kind,
                         "public_ip_id": public_ip_id,
                         "subnet_id": subnet_id,
@@ -5107,7 +5126,7 @@ class KubernetesResource(SyncResource):
         extra_body: Optional[Body] = None,
         timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
     ) -> Accepted:
-        """Resize worker node compute plan.
+        """Change the cluster's node plan.
 
         ``POST /kubernetes-clusters/{cluster_id}/resize-plan``
 
@@ -5995,6 +6014,486 @@ class WebhooksResource(SyncResource):
         )
 
 
+class MigrateConnectionsResource(CloudConnectionWaiter):
+    """Connections to AWS accounts through a read-only role; no access keys are shared."""
+
+    def list(
+        self,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> CloudConnectionList:
+        """List cloud connections.
+
+        ``GET /cloud-connections``
+        """
+        return cast(
+            "CloudConnectionList",
+            self._client.request(
+                "GET",
+                "/cloud-connections",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list_all(
+        self,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Iterator[CloudConnection]:
+        """List cloud connections, following ``next_cursor`` through every page.
+
+        ``GET /cloud-connections``
+        """
+        return self._client._paginate(
+            "/cloud-connections", query=merge_params({}, extra_query), extra_headers=extra_headers, timeout=timeout
+        )
+
+    def create(
+        self,
+        *,
+        name: str,
+        provider: Union[Literal["aws"], NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> CloudConnection:
+        """Connect a cloud account.
+
+        ``POST /cloud-connections``
+
+        Args:
+          provider: `aws`, the default.
+          name: 1 to 100 characters, for example `Production AWS`.
+        """
+        return cast(
+            "CloudConnection",
+            self._client.request(
+                "POST",
+                "/cloud-connections",
+                query=merge_params({}, extra_query),
+                body=merge_params({"provider": provider, "name": name}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def get(
+        self,
+        connection_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> CloudConnection:
+        """Get a cloud connection.
+
+        ``GET /cloud-connections/{connection_id}``
+        """
+        return cast(
+            "CloudConnection",
+            self._client.request(
+                "GET",
+                f"/cloud-connections/{path_param(connection_id)}",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def update(
+        self,
+        connection_id: str,
+        *,
+        name: Union[str, NotGiven] = NOT_GIVEN,
+        role_arn: Union[str, NotGiven] = NOT_GIVEN,
+        retry: Union[bool, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> CloudConnection:
+        """Update a cloud connection.
+
+        ``PATCH /cloud-connections/{connection_id}``
+
+        Args:
+          role_arn: The stack's RoleArn output.
+          retry: Check the role again.
+        """
+        return cast(
+            "CloudConnection",
+            self._client.request(
+                "PATCH",
+                f"/cloud-connections/{path_param(connection_id)}",
+                query=merge_params({}, extra_query),
+                body=merge_params({"name": name, "role_arn": role_arn, "retry": retry}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def delete(
+        self,
+        connection_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> None:
+        """Disconnect a cloud account.
+
+        ``DELETE /cloud-connections/{connection_id}``
+        """
+        self._client.request(
+            "DELETE",
+            f"/cloud-connections/{path_param(connection_id)}",
+            query=merge_params({}, extra_query),
+            idempotency_key=idempotency_key,
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+        return None
+
+
+class MigrateScansResource(CloudScanWaiter):
+    """Reads of everything a connection's role can see."""
+
+    def list(
+        self,
+        connection_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> CloudScanList:
+        """List scans.
+
+        ``GET /cloud-connections/{connection_id}/scans``
+        """
+        return cast(
+            "CloudScanList",
+            self._client.request(
+                "GET",
+                f"/cloud-connections/{path_param(connection_id)}/scans",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list_all(
+        self,
+        connection_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Iterator[CloudScan]:
+        """List scans, following ``next_cursor`` through every page.
+
+        ``GET /cloud-connections/{connection_id}/scans``
+        """
+        return self._client._paginate(
+            f"/cloud-connections/{path_param(connection_id)}/scans",
+            query=merge_params({}, extra_query),
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+
+    def start(
+        self,
+        connection_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> CloudScan:
+        """Scan a cloud account.
+
+        ``POST /cloud-connections/{connection_id}/scans``
+        """
+        return cast(
+            "CloudScan",
+            self._client.request(
+                "POST",
+                f"/cloud-connections/{path_param(connection_id)}/scans",
+                query=merge_params({}, extra_query),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def get(
+        self,
+        scan_id: str,
+        *,
+        include: Union[Literal["inventory"], NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> CloudScan:
+        """Get a scan.
+
+        ``GET /cloud-scans/{scan_id}``
+
+        Args:
+          include: `inventory` returns everything the scan found.
+        """
+        return cast(
+            "CloudScan",
+            self._client.request(
+                "GET",
+                f"/cloud-scans/{path_param(scan_id)}",
+                query=merge_params({"include": include}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+
+class MigrateMigrationsResource(SyncResource):
+    """Plans to move what a scan found to Pantech, with a price comparison and a Terraform export."""
+
+    def list(
+        self,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> MigrationList:
+        """List migrations.
+
+        ``GET /migrations``
+        """
+        return cast(
+            "MigrationList",
+            self._client.request(
+                "GET",
+                "/migrations",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list_all(
+        self,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Iterator[Migration]:
+        """List migrations, following ``next_cursor`` through every page.
+
+        ``GET /migrations``
+        """
+        return self._client._paginate(
+            "/migrations", query=merge_params({}, extra_query), extra_headers=extra_headers, timeout=timeout
+        )
+
+    def create(
+        self,
+        *,
+        scan_id: str,
+        name: str,
+        region: Union[str, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Migration:
+        """Plan a migration.
+
+        ``POST /migrations``
+
+        Args:
+          region: A Pantech region code; the first region when left out.
+        """
+        return cast(
+            "Migration",
+            self._client.request(
+                "POST",
+                "/migrations",
+                query=merge_params({}, extra_query),
+                body=merge_params({"scan_id": scan_id, "name": name, "region": region}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def get(
+        self,
+        migration_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Migration:
+        """Get a migration.
+
+        ``GET /migrations/{migration_id}``
+        """
+        return cast(
+            "Migration",
+            self._client.request(
+                "GET",
+                f"/migrations/{path_param(migration_id)}",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def rename(
+        self,
+        migration_id: str,
+        *,
+        name: str,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Migration:
+        """Rename a migration.
+
+        ``PATCH /migrations/{migration_id}``
+        """
+        return cast(
+            "Migration",
+            self._client.request(
+                "PATCH",
+                f"/migrations/{path_param(migration_id)}",
+                query=merge_params({}, extra_query),
+                body=merge_params({"name": name}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def delete(
+        self,
+        migration_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> None:
+        """Delete a migration.
+
+        ``DELETE /migrations/{migration_id}``
+        """
+        self._client.request(
+            "DELETE",
+            f"/migrations/{path_param(migration_id)}",
+            query=merge_params({}, extra_query),
+            idempotency_key=idempotency_key,
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+        return None
+
+    def update_item(
+        self,
+        migration_id: str,
+        *,
+        key: str,
+        excluded: Union[bool, NotGiven] = NOT_GIVEN,
+        plan_slug: Union[str, NotGiven] = NOT_GIVEN,
+        storage_gb: Union[int, NotGiven] = NOT_GIVEN,
+        cidr: Union[str, NotGiven] = NOT_GIVEN,
+        role: Union[Literal["member", "admin"], NotGiven] = NOT_GIVEN,
+        email: Union[str, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Migration:
+        """Edit a plan item.
+
+        ``PATCH /migrations/{migration_id}/items``
+        """
+        return cast(
+            "Migration",
+            self._client.request(
+                "PATCH",
+                f"/migrations/{path_param(migration_id)}/items",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {
+                        "key": key,
+                        "excluded": excluded,
+                        "plan_slug": plan_slug,
+                        "storage_gb": storage_gb,
+                        "cidr": cidr,
+                        "role": role,
+                        "email": email,
+                    },
+                    extra_body,
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def export_terraform(
+        self,
+        migration_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> MigrationTerraform:
+        """Export a migration as Terraform.
+
+        ``GET /migrations/{migration_id}/terraform``
+        """
+        return cast(
+            "MigrationTerraform",
+            self._client.request(
+                "GET",
+                f"/migrations/{path_param(migration_id)}/terraform",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+
+class MigrateResource(SyncResource):
+    """Move from another cloud: connect an account, scan it, and plan the move with prices and Terraform."""
+
+    connections: MigrateConnectionsResource
+    scans: MigrateScansResource
+    migrations: MigrateMigrationsResource
+
+    def __init__(self, client: SyncAPIClient) -> None:
+        super().__init__(client)
+        self.connections = MigrateConnectionsResource(client)
+        self.scans = MigrateScansResource(client)
+        self.migrations = MigrateMigrationsResource(client)
+
+
 class OperationsResource(OperationsWaiter):
     """Follow asynchronous changes."""
 
@@ -6061,6 +6560,7 @@ class Resources:
     kubernetes: KubernetesResource
     ssh_keys: SshKeysResource
     webhooks: WebhooksResource
+    migrate: MigrateResource
     operations: OperationsResource
 
     def _init_resources(self, client: SyncAPIClient) -> None:
@@ -6079,4 +6579,5 @@ class Resources:
         self.kubernetes = KubernetesResource(client)
         self.ssh_keys = SshKeysResource(client)
         self.webhooks = WebhooksResource(client)
+        self.migrate = MigrateResource(client)
         self.operations = OperationsResource(client)

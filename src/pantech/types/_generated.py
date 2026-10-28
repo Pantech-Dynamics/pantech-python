@@ -15,7 +15,30 @@ __all__ = [
     "ChangeDatabasePasswordRequest",
     "ChangeSSHKeyRequest",
     "ChangeSecurityGroupRequest",
+    "CloudConnection",
+    "CloudConnectionList",
+    "CloudConnectionSetup",
+    "CloudCost",
+    "CloudCostMonth",
+    "CloudFailure",
+    "CloudInventory",
+    "CloudInventoryBucketsItem",
+    "CloudInventoryDatabasesItem",
+    "CloudInventoryInstancesItem",
+    "CloudInventoryLoadBalancersItem",
+    "CloudInventoryNetworksItem",
+    "CloudInventoryPublicIpsItem",
+    "CloudInventorySecurityGroupsItem",
+    "CloudInventorySecurityGroupsItemRulesItem",
+    "CloudInventorySshKeysItem",
+    "CloudInventorySubnetsItem",
+    "CloudInventoryUsersItem",
+    "CloudInventoryVolumesItem",
+    "CloudScan",
+    "CloudScanCounts",
+    "CloudScanList",
     "ConfigureKubernetesEndpointAccessRequest",
+    "CreateCloudConnectionRequest",
     "CreateCreditPurchaseRequest",
     "CreateDatabaseRequest",
     "CreateFirewallRuleRequest",
@@ -23,6 +46,7 @@ __all__ = [
     "CreateKubernetesClusterRequest",
     "CreateKubernetesNodePoolRequest",
     "CreateLoadBalancerRequest",
+    "CreateMigrationRequest",
     "CreateNetworkRequest",
     "CreatePortForwardingRuleRequest",
     "CreatePublicIPRequest",
@@ -92,6 +116,18 @@ __all__ = [
     "MeApiKey",
     "MetricsSeries",
     "MetricsSeriesPointsItem",
+    "Migration",
+    "MigrationEstimate",
+    "MigrationFlag",
+    "MigrationItem",
+    "MigrationItemSource",
+    "MigrationItemTarget",
+    "MigrationList",
+    "MigrationListener",
+    "MigrationRule",
+    "MigrationSummary",
+    "MigrationTerraform",
+    "MigrationTerraformFilesItem",
     "MonthlyQuote",
     "Network",
     "NetworkList",
@@ -124,6 +160,7 @@ __all__ = [
     "Region",
     "RegionList",
     "RegionPlacementsItem",
+    "RenameMigrationRequest",
     "RenameRequest",
     "ReplaceDatabaseAccessRulesRequest",
     "ReplaceSecurityGroupRulesRequest",
@@ -149,8 +186,10 @@ __all__ = [
     "SyncKubernetesRoutingResponse",
     "SyncKubernetesRoutingResponseSyncedPortsItem",
     "ToggleKubernetesAddonRequest",
+    "UpdateCloudConnectionRequest",
     "UpdateKubernetesClusterRequest",
     "UpdateLoadBalancerRequest",
+    "UpdateMigrationItemRequest",
     "UpdateWebhookRequest",
     "UpgradeKubernetesClusterRequest",
     "UpgradeKubernetesNetworkRequest",
@@ -248,6 +287,10 @@ class CreateInstanceRequest(_CreateInstanceRequestRequired, total=False):
     security_group_id: str
     # Your own labels, as string keys and values.
     tags: Dict[str, str]
+    # Installs the Pantech agent when the instance first boots and connects it to your
+    # organization, so agent sessions (`POST /public/v1/instances/{instance_id}/agent-sessions`)
+    # can start with no login to the instance.
+    agent_enabled: bool
 
 
 class _CreateNetworkRequestRequired(TypedDict):
@@ -270,8 +313,10 @@ class _CreateLoadBalancerRequestRequired(TypedDict):
 
 
 class CreateLoadBalancerRequest(_CreateLoadBalancerRequestRequired, total=False):
-    # The zone to place the load balancer in.
+    # The zone to place the load balancer in, by its code as `GET /public/v1/regions` lists it.
     zone_id: str
+    # The listener protocol.
+    protocol: Literal["tcp"]
     # `vpc_native` (a VPC zone: needs `public_ip_id` and `subnet_id`) or `appliance` (a standard
     # zone: needs `zone_id`; a load balancer VM with its own public address, billed as that VM).
     kind: Literal["vpc_native", "appliance"]
@@ -316,6 +361,7 @@ class LoadBalancer(TypedDict):
     # e.g. `lb_...`.
     id: str
     name: str
+    # The zone's code, as `GET /public/v1/regions` lists it.
     zone_id: str
     kind: Literal["vpc_native", "appliance"]
     public_ip_id: str
@@ -510,6 +556,20 @@ class KubernetesCluster(_KubernetesClusterRequired, total=False):
     # The public port the API server is reachable on; null until one is routed, and for a
     # private endpoint.
     public_port: Optional[int]
+    # What Kubernetes last reported of the cluster's nodes while it runs: `healthy` (every node
+    # Ready), `degraded` (a node is NotReady, or fewer are Ready than the cluster should run) or
+    # `unknown` (the nodes could not be read in the last 15 minutes, for example a private
+    # endpoint whose agent is not connected).
+    node_health: Optional[str]
+    # Why `node_health` is `degraded` when the cause is the cluster itself rather than a node's
+    # last reading: its `pod_cidr` or `service_cidr` overlaps the network its nodes are on
+    # (possible only for a cluster created before such ranges were refused).
+    node_health_reason: Optional[str]
+    # Nodes Kubernetes reports Ready, as of `nodes_checked_at`; null when `node_health` is
+    # unknown or null.
+    ready_nodes: Optional[int]
+    # When the nodes were last read; null if never.
+    nodes_checked_at: Optional[str]
 
 
 class KubernetesClusterList(TypedDict):
@@ -2276,6 +2336,417 @@ class WebhookEventTypeList(TypedDict):
     data: List[WebhookEventType]
     # Always null: this list is returned whole.
     next_cursor: Optional[str]
+
+
+class CloudFailure(TypedDict):
+    """Why the last check or scan failed; null when it didn't."""
+
+    code: Literal["assume_role_denied", "permission_missing", "provider_unavailable", "scan_too_large", "internal"]
+    # What to do about it.
+    message: str
+
+
+class CloudConnectionSetup(TypedDict):
+    """What you need to create the role in your account."""
+
+    # Pantech's identity provider URL, which your role trusts.
+    issuer_url: str
+    # The audience every token carries.
+    audience: str
+    # The subject your role requires: this connection's id.
+    subject: str
+    # Opens AWS's create-stack page with this template and connection filled in; null when not
+    # offered.
+    quick_create_url: Optional[str]
+    # A CloudFormation template (JSON) for this connection: a read-only role and, unless one
+    # exists, the identity provider.
+    template: str
+
+
+class CloudConnection(TypedDict):
+    id: str
+    provider: Literal["aws"]
+    name: str
+    # `awaiting_role`, `verifying`, `connected` or `failed`.
+    status: Literal["awaiting_role", "verifying", "connected", "failed"]
+    failure: CloudFailure
+    role_arn: Optional[str]
+    aws_account_id: Optional[str]
+    verified_at: Optional[str]
+    created_at: str
+    updated_at: str
+    setup: CloudConnectionSetup
+
+
+class CloudConnectionList(TypedDict):
+    data: List[CloudConnection]
+    # Always null: this list is returned whole.
+    next_cursor: Optional[str]
+
+
+class _CreateCloudConnectionRequestRequired(TypedDict):
+    # 1 to 100 characters, for example `Production AWS`.
+    name: str
+
+
+class CreateCloudConnectionRequest(_CreateCloudConnectionRequestRequired, total=False):
+    # `aws`, the default.
+    provider: Literal["aws"]
+
+
+class UpdateCloudConnectionRequest(TypedDict, total=False):
+    name: str
+    # The stack's RoleArn output.
+    role_arn: str
+    # Check the role again.
+    retry: bool
+
+
+class CloudScanCounts(TypedDict):
+    instances: int
+    volumes: int
+    networks: int
+    subnets: int
+    security_groups: int
+    public_ips: int
+    load_balancers: int
+    databases: int
+    buckets: int
+    users: int
+    ssh_keys: int
+
+
+class CloudCostMonth(TypedDict):
+    # YYYY-MM.
+    month: str
+    amount_minor: int
+
+
+class CloudCost(TypedDict):
+    """The source account's whole bill, every service."""
+
+    currency: str
+    # Average of the months, in minor units of currency.
+    average_monthly_minor: int
+    months: List[CloudCostMonth]
+
+
+class CloudScan(TypedDict):
+    id: str
+    connection_id: str
+    status: Literal["queued", "running", "succeeded", "failed"]
+    failure: CloudFailure
+    created_at: str
+    started_at: Optional[str]
+    finished_at: Optional[str]
+    aws_account_id: Optional[str]
+    # Regions read.
+    regions: List[str]
+    counts: CloudScanCounts
+    cost: CloudCost
+    # Parts not read, e.g. `cost_unavailable` or `region_denied:eu-south-1`.
+    warnings: List[str]
+    # Kinds cut at 2,000 items.
+    truncated: List[str]
+    inventory: CloudInventory
+
+
+class CloudScanList(TypedDict):
+    data: List[CloudScan]
+    # Always null: this list is returned whole.
+    next_cursor: Optional[str]
+
+
+class MigrationListener(TypedDict):
+    protocol: str
+    port: int
+
+
+class CloudInventoryInstancesItem(TypedDict):
+    id: str
+    name: Optional[str]
+    region: str
+    zone: Optional[str]
+    instance_type: str
+    state: str
+    vcpu: Optional[int]
+    memory_mib: Optional[int]
+    architecture: str
+    platform: str
+    volume_ids: List[str]
+    network_id: Optional[str]
+    subnet_id: Optional[str]
+    security_group_ids: List[str]
+    public_ip: Optional[str]
+    private_ip: Optional[str]
+    key_name: Optional[str]
+    launched_at: Optional[str]
+
+
+class CloudInventoryVolumesItem(TypedDict):
+    id: str
+    region: str
+    zone: Optional[str]
+    type: str
+    size_gb: int
+    attached_to: Optional[str]
+    device: Optional[str]
+    encrypted: bool
+
+
+class CloudInventoryNetworksItem(TypedDict):
+    id: str
+    region: str
+    name: Optional[str]
+    cidr: str
+    is_default: bool
+
+
+class CloudInventorySubnetsItem(TypedDict):
+    id: str
+    region: str
+    network_id: str
+    name: Optional[str]
+    cidr: str
+    zone: Optional[str]
+    maps_public_ip: bool
+
+
+class CloudInventorySecurityGroupsItemRulesItem(TypedDict):
+    direction: Literal["ingress", "egress"]
+    protocol: str
+    from_port: Optional[int]
+    to_port: Optional[int]
+    cidr: Optional[str]
+    ipv6_cidr: Optional[str]
+    source_group_id: Optional[str]
+    prefix_list_id: Optional[str]
+
+
+class CloudInventorySecurityGroupsItem(TypedDict):
+    id: str
+    region: str
+    network_id: Optional[str]
+    name: str
+    description: Optional[str]
+    rules: List[CloudInventorySecurityGroupsItemRulesItem]
+
+
+class CloudInventoryPublicIpsItem(TypedDict):
+    id: str
+    region: str
+    address: str
+    instance_id: Optional[str]
+
+
+class CloudInventoryLoadBalancersItem(TypedDict):
+    id: str
+    region: str
+    name: str
+    type: str
+    scheme: str
+    network_id: Optional[str]
+    listeners: List[MigrationListener]
+
+
+class CloudInventoryDatabasesItem(TypedDict):
+    id: str
+    region: str
+    engine: str
+    engine_version: str
+    instance_class: str
+    vcpu: Optional[int]
+    memory_mib: Optional[int]
+    storage_gb: int
+    multi_az: bool
+    publicly_accessible: bool
+
+
+class CloudInventoryBucketsItem(TypedDict):
+    name: str
+    region: Optional[str]
+    created_at: Optional[str]
+
+
+class CloudInventoryUsersItem(TypedDict):
+    name: str
+    email: Optional[str]
+    is_admin: bool
+    created_at: Optional[str]
+
+
+class CloudInventorySshKeysItem(TypedDict):
+    name: str
+    region: str
+    fingerprint: Optional[str]
+    public_key: Optional[str]
+
+
+class CloudInventory(TypedDict):
+    """Everything a scan found."""
+
+    instances: List[CloudInventoryInstancesItem]
+    volumes: List[CloudInventoryVolumesItem]
+    networks: List[CloudInventoryNetworksItem]
+    subnets: List[CloudInventorySubnetsItem]
+    security_groups: List[CloudInventorySecurityGroupsItem]
+    public_ips: List[CloudInventoryPublicIpsItem]
+    load_balancers: List[CloudInventoryLoadBalancersItem]
+    databases: List[CloudInventoryDatabasesItem]
+    buckets: List[CloudInventoryBucketsItem]
+    users: List[CloudInventoryUsersItem]
+    ssh_keys: List[CloudInventorySshKeysItem]
+
+
+class MigrationFlag(TypedDict):
+    code: str
+    message: str
+    # A blocking flag makes the item unsupported.
+    blocking: bool
+
+
+class MigrationRule(TypedDict):
+    direction: Literal["ingress", "egress"]
+    protocol: Literal["tcp", "udp", "icmp", "all"]
+    port_range: Optional[str]
+    cidr: str
+
+
+class MigrationItemTarget(TypedDict):
+    """What the item becomes on Pantech; fields that don't apply to its kind are null or empty."""
+
+    plan_slug: Optional[str]
+    disk_gb: Optional[int]
+    cidr: Optional[str]
+    network_key: Optional[str]
+    subnet_key: Optional[str]
+    instance_key: Optional[str]
+    rules: List[MigrationRule]
+    engine: Optional[str]
+    engine_version: Optional[str]
+    storage_gb: Optional[int]
+    role: Optional[str]
+    email: Optional[str]
+    public_key: Optional[str]
+    listeners: List[MigrationListener]
+
+
+class MigrationItemSource(TypedDict):
+    id: str
+    name: Optional[str]
+    region: Optional[str]
+    summary: str
+    vcpu: Optional[int]
+    memory_mib: Optional[int]
+    disk_gb: Optional[int]
+
+
+class MigrationItem(TypedDict):
+    # Stable across edits: kind, region and the source id.
+    key: str
+    kind: Literal[
+        "network",
+        "subnet",
+        "security_group",
+        "instance",
+        "volume",
+        "public_ip",
+        "load_balancer",
+        "database",
+        "ssh_key",
+        "user",
+        "bucket",
+    ]
+    source: MigrationItemSource
+    status: Literal["planned", "excluded", "unsupported"]
+    flags: List[MigrationFlag]
+    target: MigrationItemTarget
+
+
+class MigrationEstimate(TypedDict):
+    """Pantech's monthly price for the plan next to the source's monthly bill, computed when read."""
+
+    currency: str
+    # False when part of the plan could not be priced; then pantech_monthly_minor is null.
+    pantech_priced: bool
+    pantech_monthly_minor: Optional[int]
+    # What the Pantech price includes: servers, volumes, networks.
+    covers: List[str]
+    # Planned items the price leaves out, e.g. databases.
+    not_covered: List[str]
+    source_known: bool
+    source_monthly_minor: Optional[int]
+    source_currency: Optional[str]
+    source_months: int
+    # `whole_account`: the source figure is the whole cloud bill.
+    source_scope: Literal["whole_account"]
+
+
+class MigrationSummary(TypedDict):
+    planned: int
+    excluded: int
+    unsupported: int
+    # Planned items per kind.
+    by_kind: Dict[str, int]
+
+
+class Migration(TypedDict):
+    id: str
+    name: str
+    region: str
+    connection_id: str
+    scan_id: str
+    # `planning`. Copying arrives in a later release.
+    stage: Literal["planning"]
+    version: int
+    summary: MigrationSummary
+    estimate: MigrationEstimate
+    # Null in a list.
+    items: Optional[List[MigrationItem]]
+    created_at: str
+    updated_at: str
+
+
+class MigrationList(TypedDict):
+    data: List[Migration]
+    # Always null: this list is returned whole.
+    next_cursor: Optional[str]
+
+
+class _CreateMigrationRequestRequired(TypedDict):
+    scan_id: str
+    name: str
+
+
+class CreateMigrationRequest(_CreateMigrationRequestRequired, total=False):
+    # A Pantech region code; the first region when left out.
+    region: str
+
+
+class RenameMigrationRequest(TypedDict):
+    name: str
+
+
+class _UpdateMigrationItemRequestRequired(TypedDict):
+    key: str
+
+
+class UpdateMigrationItemRequest(_UpdateMigrationItemRequestRequired, total=False):
+    excluded: bool
+    plan_slug: str
+    storage_gb: int
+    cidr: str
+    role: Literal["member", "admin"]
+    email: str
+
+
+class MigrationTerraformFilesItem(TypedDict):
+    name: str
+    content: str
+
+
+class MigrationTerraform(TypedDict):
+    files: List[MigrationTerraformFilesItem]
 
 
 class QuoteDiskOfferingResponse(TypedDict):

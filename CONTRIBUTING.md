@@ -61,7 +61,9 @@ when it changes.
 
 A new operation needs a method name in `src/pantech/_operations.py` (idiomatic snake_case, nested
 where the API nests, such as `networks.subnets.list`); the coverage test names any that are
-missing. Commit the generated files, and never edit them by hand: change the generator instead.
+missing. An operation the SDK deliberately leaves out goes in `NOT_IN_SDK` there instead, with the
+reason; the generators skip it and the types only it uses. Commit the generated files, and never
+edit them by hand: change the generator instead.
 
 ## Guidelines
 

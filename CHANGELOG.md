@@ -4,6 +4,19 @@ All notable changes to the `pantech` package. The newest version heading
 (`## X.Y.Z (YYYY-MM-DD)`) is released when it reaches `main`: see
 `.github/workflows/release.yml`. Put work in progress under `## Unreleased`.
 
+## 0.2.0 (2026-10-28)
+
+FEATURES:
+
+- `client.migrate`, for moving from another cloud: `migrate.connections` (`list`, `create`, `get`, `update` for the name, role ARN or a retry, `delete`) connects an AWS account through a read-only role; `migrate.scans` (`list`, `start`, `get` with `include="inventory"`) reads what runs there; `migrate.migrations` (`list`, `create`, `get`, `rename`, `delete`, `update_item`, `export_terraform`) plans the move with a price comparison and a Terraform export. Sync and async.
+- `migrate.connections.wait(...)` and `migrate.scans.wait(...)`, which raise the new `CloudFailedError` when the connection or scan fails.
+- `examples/migrate_from_aws.py`.
+- Types follow the current public API, including Kubernetes clusters' `node_health`, `ready_nodes` and `nodes_checked_at`, and a load balancer's `protocol`.
+
+NOTES:
+
+- Agent sessions, which answer only AI apps connected through Pantech's MCP server, have no methods yet. `NOT_IN_SDK` in `src/pantech/_operations.py` lists them; the generators leave out their types.
+
 ## 0.1.0 (2026-10-24)
 
 FEATURES:

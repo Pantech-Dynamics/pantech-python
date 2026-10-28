@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Any, Dict, Mapping, Optional, cast
+from typing import TYPE_CHECKING, Any, Dict, FrozenSet, Mapping, Optional, cast
 from urllib.parse import quote
 
-from ._exceptions import OperationFailedError, OrderFailedError, WaitTimeoutError
+from ._exceptions import CloudFailedError, OperationFailedError, OrderFailedError, WaitTimeoutError
 from ._types import NotGiven
 
 if TYPE_CHECKING:
     from ._base_client import AsyncAPIClient, SyncAPIClient
-    from .types import DatabaseOrder, InstanceOrder, Operation
+    from .types import CloudConnection, CloudScan, DatabaseOrder, InstanceOrder, Operation
 
 __all__ = [
     "SyncResource",
@@ -22,11 +22,17 @@ __all__ = [
     "AsyncInstanceOrderWaiter",
     "DatabaseOrderWaiter",
     "AsyncDatabaseOrderWaiter",
+    "CloudConnectionWaiter",
+    "AsyncCloudConnectionWaiter",
+    "CloudScanWaiter",
+    "AsyncCloudScanWaiter",
 ]
 
 OPERATION_DONE = frozenset({"succeeded", "failed"})
 ORDER_DONE = frozenset({"provisioned", "failed", "payment_failed"})
 ORDER_FAILED = frozenset({"failed", "payment_failed"})
+CONNECTION_DONE = frozenset({"connected", "failed"})
+SCAN_DONE = frozenset({"succeeded", "failed"})
 
 
 def path_param(value: str) -> str:
@@ -224,6 +230,118 @@ class AsyncDatabaseOrderWaiter(AsyncResource):
         """
         order = await _wait_order_async(self, "Database", "/database-orders", order_id, timeout, poll_interval)
         return cast("DatabaseOrder", order)
+
+
+def _wait_cloud_sync(
+    resource: SyncResource,
+    kind: str,
+    path: str,
+    ident: str,
+    done: FrozenSet[str],
+    timeout: Optional[float],
+    poll_interval: float,
+) -> Dict[str, Any]:
+    _check_wait_args(timeout, poll_interval)
+    client = resource._client
+    deadline = None if timeout is None else client._clock() + timeout
+    while True:
+        item = cast(Dict[str, Any], client.request("GET", path))
+        status = str(item.get("status") or "")
+        if status in done:
+            if status == "failed":
+                raise CloudFailedError(kind, item)
+            return item
+        delay = poll_interval
+        if deadline is not None:
+            remaining = deadline - client._clock()
+            if remaining <= 0:
+                raise _timed_out(f"Cloud {kind}", ident, status, timeout)
+            delay = min(delay, remaining)
+        client._sleep(delay)
+
+
+async def _wait_cloud_async(
+    resource: AsyncResource,
+    kind: str,
+    path: str,
+    ident: str,
+    done: FrozenSet[str],
+    timeout: Optional[float],
+    poll_interval: float,
+) -> Dict[str, Any]:
+    _check_wait_args(timeout, poll_interval)
+    client = resource._client
+    deadline = None if timeout is None else client._clock() + timeout
+    while True:
+        item = cast(Dict[str, Any], await client.request("GET", path))
+        status = str(item.get("status") or "")
+        if status in done:
+            if status == "failed":
+                raise CloudFailedError(kind, item)
+            return item
+        delay = poll_interval
+        if deadline is not None:
+            remaining = deadline - client._clock()
+            if remaining <= 0:
+                raise _timed_out(f"Cloud {kind}", ident, status, timeout)
+            delay = min(delay, remaining)
+        await client._sleep(delay)
+
+
+class CloudConnectionWaiter(SyncResource):
+    def wait(
+        self, connection_id: str, *, timeout: Optional[float] = 600.0, poll_interval: float = 5.0
+    ) -> CloudConnection:
+        """Polls ``GET /cloud-connections/{id}`` until the connection is ``connected``.
+
+        Set the role ARN with ``update`` first: a connection awaiting it is
+        waited on too. Raises ``CloudFailedError`` when the check fails, and
+        ``WaitTimeoutError`` after *timeout* seconds (``None`` waits forever).
+        """
+        path = f"/cloud-connections/{path_param(connection_id)}"
+        conn = _wait_cloud_sync(self, "connection", path, connection_id, CONNECTION_DONE, timeout, poll_interval)
+        return cast("CloudConnection", conn)
+
+
+class AsyncCloudConnectionWaiter(AsyncResource):
+    async def wait(
+        self, connection_id: str, *, timeout: Optional[float] = 600.0, poll_interval: float = 5.0
+    ) -> CloudConnection:
+        """Polls ``GET /cloud-connections/{id}`` until the connection is ``connected``.
+
+        Set the role ARN with ``update`` first: a connection awaiting it is
+        waited on too. Raises ``CloudFailedError`` when the check fails, and
+        ``WaitTimeoutError`` after *timeout* seconds (``None`` waits forever).
+        """
+        path = f"/cloud-connections/{path_param(connection_id)}"
+        conn = await _wait_cloud_async(self, "connection", path, connection_id, CONNECTION_DONE, timeout, poll_interval)
+        return cast("CloudConnection", conn)
+
+
+class CloudScanWaiter(SyncResource):
+    def wait(self, scan_id: str, *, timeout: Optional[float] = 1800.0, poll_interval: float = 10.0) -> CloudScan:
+        """Polls ``GET /cloud-scans/{id}`` until the scan ``succeeded``.
+
+        The result has no inventory: read it with ``get(scan_id, include="inventory")``.
+        Raises ``CloudFailedError`` when the scan fails, and ``WaitTimeoutError``
+        after *timeout* seconds (``None`` waits forever).
+        """
+        path = f"/cloud-scans/{path_param(scan_id)}"
+        scan = _wait_cloud_sync(self, "scan", path, scan_id, SCAN_DONE, timeout, poll_interval)
+        return cast("CloudScan", scan)
+
+
+class AsyncCloudScanWaiter(AsyncResource):
+    async def wait(self, scan_id: str, *, timeout: Optional[float] = 1800.0, poll_interval: float = 10.0) -> CloudScan:
+        """Polls ``GET /cloud-scans/{id}`` until the scan ``succeeded``.
+
+        The result has no inventory: read it with ``get(scan_id, include="inventory")``.
+        Raises ``CloudFailedError`` when the scan fails, and ``WaitTimeoutError``
+        after *timeout* seconds (``None`` waits forever).
+        """
+        path = f"/cloud-scans/{path_param(scan_id)}"
+        scan = await _wait_cloud_async(self, "scan", path, scan_id, SCAN_DONE, timeout, poll_interval)
+        return cast("CloudScan", scan)
 
 
 def merge_params(values: Dict[str, Any], extra: Optional[Mapping[str, Any]]) -> Dict[str, Any]:

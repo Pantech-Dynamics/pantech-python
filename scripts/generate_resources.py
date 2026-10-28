@@ -10,7 +10,6 @@ parameters are positional, everything else keyword-only. Writes
 
 from __future__ import annotations
 
-import importlib.util
 import re
 import sys
 from dataclasses import dataclass, field
@@ -23,7 +22,9 @@ from _codegen import (
     build_operations,
     comment_lines,
     docstring_text,
+    load_table,
     ruff_format,
+    schemas_only_for,
 )
 from _spec import ROOT, load_spec
 
@@ -34,6 +35,8 @@ BASES = {
     "operations": "OperationsWaiter",
     "instances": "InstanceOrderWaiter",
     "databases": "DatabaseOrderWaiter",
+    "migrate.connections": "CloudConnectionWaiter",
+    "migrate.scans": "CloudScanWaiter",
 }
 
 FAMILY_DOCS = {
@@ -63,6 +66,10 @@ FAMILY_DOCS = {
     "ssh_keys": "Keys installed on new instances.",
     "webhooks": "Events sent to your own URL when something changes.",
     "webhooks.deliveries": "Deliveries of a webhook's events.",
+    "migrate": "Move from another cloud: connect an account, scan it, and plan the move with prices and Terraform.",
+    "migrate.connections": "Connections to AWS accounts through a read-only role; no access keys are shared.",
+    "migrate.scans": "Reads of everything a connection's role can see.",
+    "migrate.migrations": "Plans to move what a scan found to Pantech, with a price comparison and a Terraform export.",
     "operations": "Follow asynchronous changes.",
 }
 
@@ -79,14 +86,9 @@ RESERVED = {
 }
 
 
-def load_table() -> Tuple[Dict[str, Tuple[str, str, str]], frozenset]:  # type: ignore[type-arg]
-    path = ROOT / "src" / "pantech" / "_operations.py"
-    spec = importlib.util.spec_from_file_location("_pantech_operations", path)
-    if spec is None or spec.loader is None:
-        raise SystemExit(f"cannot load {path}")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod.OPERATIONS, mod.NO_REPLAY
+def read_table() -> Tuple[Dict[str, Tuple[str, str, str]], frozenset, frozenset]:  # type: ignore[type-arg]
+    mod = load_table()
+    return mod.OPERATIONS, mod.NO_REPLAY, frozenset(mod.NOT_IN_SDK)
 
 
 @dataclass
@@ -353,10 +355,10 @@ class Renderer:
 
 
 def render(is_async: bool) -> str:
+    table, no_replay, skip = read_table()
     reg = TypeRegistry(load_spec())
-    reg.build_components()
-    ops = build_operations(reg)
-    table, no_replay = load_table()
+    reg.build_components(skip=schemas_only_for(reg.spec, skip))
+    ops = build_operations(reg, skip)
     root = build_tree(ops, table)
     out = OUT_DIR / ("_async.py" if is_async else "_sync.py")
     return ruff_format(Renderer(reg, no_replay, is_async).module(root), str(out))

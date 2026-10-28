@@ -3,7 +3,8 @@
 This table is hand-maintained and is the one place SDK method names are
 chosen. ``scripts/generate_resources.py`` reads it to write the resource
 classes, and ``tests/test_spec_coverage.py`` fails when an operation in
-``openapi/public-api.yaml`` is missing here or points at the wrong route.
+``openapi/public-api.yaml`` is missing here (or from ``NOT_IN_SDK``) or
+points at the wrong route.
 
 Each entry is ``operationId: (HTTP method, path under /public/v1, method)``,
 where *method* is the attribute path from the client, for example
@@ -321,6 +322,26 @@ OPERATIONS: Dict[str, Tuple[str, str, str]] = {
         "/webhooks/{webhook_id}/deliveries/{delivery_id}/redeliver",
         "webhooks.deliveries.redeliver",
     ),
+    # Migrate
+    "listCloudConnections": ("GET", "/cloud-connections", "migrate.connections.list"),
+    "createCloudConnection": ("POST", "/cloud-connections", "migrate.connections.create"),
+    "getCloudConnection": ("GET", "/cloud-connections/{connection_id}", "migrate.connections.get"),
+    "updateCloudConnection": ("PATCH", "/cloud-connections/{connection_id}", "migrate.connections.update"),
+    "deleteCloudConnection": ("DELETE", "/cloud-connections/{connection_id}", "migrate.connections.delete"),
+    "listCloudScans": ("GET", "/cloud-connections/{connection_id}/scans", "migrate.scans.list"),
+    "startCloudScan": ("POST", "/cloud-connections/{connection_id}/scans", "migrate.scans.start"),
+    "getCloudScan": ("GET", "/cloud-scans/{scan_id}", "migrate.scans.get"),
+    "listMigrations": ("GET", "/migrations", "migrate.migrations.list"),
+    "createMigration": ("POST", "/migrations", "migrate.migrations.create"),
+    "getMigration": ("GET", "/migrations/{migration_id}", "migrate.migrations.get"),
+    "renameMigration": ("PATCH", "/migrations/{migration_id}", "migrate.migrations.rename"),
+    "deleteMigration": ("DELETE", "/migrations/{migration_id}", "migrate.migrations.delete"),
+    "updateMigrationItem": ("PATCH", "/migrations/{migration_id}/items", "migrate.migrations.update_item"),
+    "exportMigrationTerraform": (
+        "GET",
+        "/migrations/{migration_id}/terraform",
+        "migrate.migrations.export_terraform",
+    ),
     # Operations
     "getOperation": ("GET", "/operations/{operation_id}", "operations.get"),
     "streamOperation": ("GET", "/operations/{operation_id}/events", "operations.stream"),
@@ -344,3 +365,23 @@ NO_REPLAY: FrozenSet[str] = frozenset(
         "revokeMe",
     }
 )
+
+# Spec operations the SDK deliberately has no method for yet, with the reason.
+# The generators skip them (and the schemas only they use), and the coverage
+# test accepts them. Agent sessions answer only AI apps connected through
+# Pantech's MCP server; a standard API key gets 403
+# AGENT_SESSIONS_NOT_FOR_API_KEYS. Remove an entry when its method is added.
+_AGENT_SESSIONS = "agent sessions: MCP-connected AI apps only"
+NOT_IN_SDK: Dict[str, str] = {
+    "getInstanceAgent": _AGENT_SESSIONS,
+    "startAgentSession": _AGENT_SESSIONS,
+    "listAgentSessions": _AGENT_SESSIONS,
+    "getAgentSession": _AGENT_SESSIONS,
+    "messageAgentSession": _AGENT_SESSIONS,
+    "callAgentTool": _AGENT_SESSIONS,
+    "getAgentToolCall": _AGENT_SESSIONS,
+    "listAgentSessionEvents": _AGENT_SESSIONS,
+    "decideAgentApproval": _AGENT_SESSIONS,
+    "terminateAgentSession": _AGENT_SESSIONS,
+    "getAgentSessionReport": _AGENT_SESSIONS,
+}

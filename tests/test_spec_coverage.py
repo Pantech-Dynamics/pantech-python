@@ -17,7 +17,7 @@ import httpx
 import pytest
 
 import pantech
-from pantech._operations import NO_REPLAY, OPERATIONS
+from pantech._operations import NO_REPLAY, NOT_IN_SDK, OPERATIONS
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -76,13 +76,18 @@ def test_spec_has_operations() -> None:
 
 
 def test_every_spec_operation_is_in_the_table() -> None:
-    missing = sorted(set(SPEC_OPS) - set(OPERATIONS))
+    missing = sorted(set(SPEC_OPS) - set(OPERATIONS) - set(NOT_IN_SDK))
     assert not missing, f"add these to src/pantech/_operations.py: {missing}"
 
 
 def test_table_has_no_stale_operations() -> None:
     stale = sorted(set(OPERATIONS) - set(SPEC_OPS))
     assert not stale, f"no longer in the spec: {stale}"
+
+
+def test_not_in_sdk_is_in_the_spec_and_not_the_table() -> None:
+    assert set(NOT_IN_SDK) <= set(SPEC_OPS), sorted(set(NOT_IN_SDK) - set(SPEC_OPS))
+    assert not set(NOT_IN_SDK) & set(OPERATIONS), "remove these from NOT_IN_SDK: they have methods"
 
 
 def test_no_replay_names_are_real() -> None:

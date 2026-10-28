@@ -6,10 +6,11 @@
 
 The official Python library for the [Pantech Dynamics public API](https://docs.pantechdynamics.com/api):
 instances, VPC networks, firewalls, public IPs, load balancers, volumes, snapshots, managed databases,
-managed Kubernetes, SSH keys, webhooks, billing and usage.
+managed Kubernetes, SSH keys, webhooks, billing, usage, and moving from another cloud.
 
 - Sync (`Pantech`) and asyncio (`AsyncPantech`) clients with the same methods
-- Every operation in the public API, with typed keyword arguments and TypedDict results
+- Every operation in the public API, with typed keyword arguments and TypedDict results (agent
+  sessions, which answer only AI apps connected through Pantech's MCP server, are not covered yet)
 - Automatic `Idempotency-Key`s, safe retries, cursor pagination, operation and order waiting
 - Webhook signature verification
 - One dependency: `httpx`. Python 3.10+.
@@ -97,6 +98,31 @@ Arguments are keyword-only, except the ids in the path. Optional arguments you l
 sent; passing `None` sends JSON `null`. Results are plain dicts typed with the TypedDicts in
 `pantech.types`. `client.request("GET", "/me")` calls any route directly.
 
+### Move from another cloud
+
+`client.migrate` connects an AWS account through a read-only role that only Pantech can assume (no
+access keys are shared), scans what runs there, and plans the move with a price comparison and a
+Terraform export. Nothing is created on Pantech until you apply the Terraform.
+
+```python
+conn = client.migrate.connections.create(name="Production AWS")
+print(conn["setup"]["quick_create_url"])  # create the stack in AWS, then send its RoleArn output
+client.migrate.connections.update(conn["id"], role_arn="arn:aws:iam::...:role/...")
+client.migrate.connections.wait(conn["id"])  # raises CloudFailedError if the role cannot be assumed
+
+scan = client.migrate.scans.start(conn["id"])
+scan = client.migrate.scans.wait(scan["id"])
+
+plan = client.migrate.migrations.create(scan_id=scan["id"], name="Move to Pantech")
+print(plan["estimate"]["pantech_monthly_minor"], plan["estimate"]["source_monthly_minor"])
+for f in client.migrate.migrations.export_terraform(plan["id"])["files"]:
+    print(f["name"])  # main.tf, variables.tf
+```
+
+`client.migrate.migrations.update_item(plan_id, key=..., excluded=True)` leaves an item out, or
+changes its plan, size, address range or role, before you export. See
+`examples/migrate_from_aws.py`.
+
 ## Configuration
 
 | Option | Environment | Default |
@@ -140,7 +166,7 @@ except pantech.APIError as err:
 `AuthenticationError` (401), `PaymentRequiredError` (402), `PermissionDeniedError` (403),
 `NotFoundError` (404), `ConflictError` (409), `ValidationError` (422), `RateLimitError` (429),
 `InternalServerError` (5xx). No answer at all is `APIConnectionError` (or `APITimeoutError`).
-Waiting raises `OperationFailedError`, `OrderFailedError` or `WaitTimeoutError`. All of them are
+Waiting raises `OperationFailedError`, `OrderFailedError`, `CloudFailedError` or `WaitTimeoutError`. All of them are
 `PantechError`.
 
 ## Webhooks
@@ -166,6 +192,8 @@ The comparison is constant-time, and any of several `v1` signatures may match (t
 - [`examples/create_instance.py`](examples/create_instance.py): order an instance and wait for it
 - [`examples/async_list.py`](examples/async_list.py): concurrent listing with `AsyncPantech`
 - [`examples/webhook_server.py`](examples/webhook_server.py): a verified webhook receiver on `http.server`
+- [`examples/migrate_from_aws.py`](examples/migrate_from_aws.py): connect an AWS account, scan it, plan the move
+  and write the Terraform
 
 ## Development
 

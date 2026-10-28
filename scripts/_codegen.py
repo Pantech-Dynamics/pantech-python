@@ -7,6 +7,7 @@ gets the same name in both files.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import keyword
 import re
@@ -14,11 +15,65 @@ import subprocess
 import sys
 import textwrap
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from types import ModuleType
+from typing import Any, Dict, FrozenSet, List, Optional, Set, Tuple
 
 from _spec import ROOT, iter_operations
 
 TYPING_NAMES = {"Any", "Dict", "List", "Literal", "Optional", "TypedDict", "Union"}
+
+
+def load_table() -> ModuleType:
+    """Loads src/pantech/_operations.py without importing the package."""
+    path = ROOT / "src" / "pantech" / "_operations.py"
+    spec = importlib.util.spec_from_file_location("_pantech_operations", path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"cannot load {path}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def not_in_sdk() -> FrozenSet[str]:
+    """The operations the SDK deliberately leaves out (``NOT_IN_SDK``)."""
+    return frozenset(load_table().NOT_IN_SDK)
+
+
+def _refs(obj: Any, out: Set[str]) -> None:
+    if isinstance(obj, dict):
+        ref = obj.get("$ref")
+        if isinstance(ref, str) and ref.startswith("#/components/schemas/"):
+            out.add(ref.split("/")[-1])
+        for v in obj.values():
+            _refs(v, out)
+    elif isinstance(obj, list):
+        for v in obj:
+            _refs(v, out)
+
+
+def _reachable(spec: Dict[str, Any], roots: List[Any]) -> Set[str]:
+    seen: Set[str] = set()
+    todo: Set[str] = set()
+    for root in roots:
+        _refs(root, todo)
+    while todo:
+        name = todo.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        found: Set[str] = set()
+        _refs(spec["components"]["schemas"].get(name, {}), found)
+        todo |= found - seen
+    return seen
+
+
+def schemas_only_for(spec: Dict[str, Any], op_ids: FrozenSet[str]) -> Set[str]:
+    """The schemas that only the given operations use, so they are left out with them."""
+    kept: List[Any] = []
+    skipped: List[Any] = []
+    for op_id, _method, _path, op, _item in iter_operations(spec):
+        (skipped if op_id in op_ids else kept).append(op)
+    return _reachable(spec, skipped) - _reachable(spec, kept)
 
 
 def pascal(name: str) -> str:
@@ -180,8 +235,10 @@ class TypeRegistry:
         self.order.append(name)
         return name
 
-    def build_components(self) -> None:
+    def build_components(self, skip: Optional[Set[str]] = None) -> None:
         for name, schema in self.schemas.items():
+            if skip and name in skip:
+                continue
             s = schema
             if "allOf" in s or s.get("type") == "object" or "properties" in s:
                 self.object_def(s, name)
@@ -272,9 +329,11 @@ def _param_schema(reg: TypeRegistry, p: Dict[str, Any]) -> Dict[str, Any]:
     return p
 
 
-def build_operations(reg: TypeRegistry) -> Dict[str, OperationSpec]:
+def build_operations(reg: TypeRegistry, skip: FrozenSet[str] = frozenset()) -> Dict[str, OperationSpec]:
     ops: Dict[str, OperationSpec] = {}
     for op_id, method, path, op, item in iter_operations(reg.spec):
+        if op_id in skip:
+            continue
         ctx = pascal(op_id)
         path_params: List[Param] = []
         query_params: List[Param] = []

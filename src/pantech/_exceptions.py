@@ -209,6 +209,23 @@ class OrderFailedError(PantechError):
         super().__init__(msg)
 
 
+class CloudFailedError(PantechError):
+    """A cloud connection's check or a scan ended ``failed``. ``code`` is stable; ``message`` says what to do."""
+
+    def __init__(self, kind: str, resource: Mapping[str, Any]) -> None:
+        self.kind = kind
+        self.resource = resource
+        failure: Mapping[str, Any] = resource.get("failure") or {}
+        self.code: str = str(failure.get("code") or "")
+        self.message: str = str(failure.get("message") or "")
+        msg = f"Cloud {kind} {resource.get('id', '')} failed"
+        if self.code:
+            msg += f": {self.code}"
+        if self.message:
+            msg += f": {self.message}"
+        super().__init__(msg)
+
+
 class WebhookVerificationError(PantechError):
     """A webhook delivery's ``Pantech-Signature`` did not verify. Reject the request."""
 
