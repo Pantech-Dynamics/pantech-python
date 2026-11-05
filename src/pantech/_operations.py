@@ -384,4 +384,5 @@ NOT_IN_SDK: Dict[str, str] = {
     "decideAgentApproval": _AGENT_SESSIONS,
     "terminateAgentSession": _AGENT_SESSIONS,
     "getAgentSessionReport": _AGENT_SESSIONS,
+    "setUpInstanceAgent": _AGENT_SESSIONS,
 }

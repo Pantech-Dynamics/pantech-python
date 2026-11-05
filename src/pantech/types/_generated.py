@@ -101,6 +101,7 @@ __all__ = [
     "KubernetesClusterAddon",
     "KubernetesClusterAddonList",
     "KubernetesClusterList",
+    "KubernetesFixedNodeSize",
     "KubernetesNode",
     "KubernetesNodePool",
     "KubernetesNodePoolList",
@@ -405,10 +406,24 @@ class KubernetesVersion(TypedDict):
     min_memory_mb: int
 
 
-class KubernetesVersionList(TypedDict):
+class _KubernetesVersionListRequired(TypedDict):
     data: List[KubernetesVersion]
     # Zones where a cluster can have 3 control nodes.
     ha_zone_ids: List[str]
+
+
+class KubernetesVersionList(_KubernetesVersionListRequired, total=False):
+    # Zones that build Kubernetes nodes only at fixed sizes, one entry per size, so a zone may
+    # appear more than once.
+    fixed_node_sizes: List[KubernetesFixedNodeSize]
+
+
+class KubernetesFixedNodeSize(TypedDict):
+    zone_id: str
+    # The vCPUs of one node size the zone builds; 0 when the zone takes no plan now.
+    vcpu: int
+    # The memory, in MB, of that node size; 0 when the zone takes no plan now.
+    memory_mb: int
 
 
 class _CreateKubernetesClusterRequestRequired(TypedDict):
@@ -508,7 +523,8 @@ class _KubernetesClusterRequired(TypedDict):
     # control_nodes plus workers: the VMs billed.
     nodes: int
     desired_state: Literal["running", "stopped", "deleted"]
-    # `updating` while a scale or upgrade runs.
+    # A new cluster reads `provisioning` until every node has joined and its kubeconfig can be
+    # downloaded, then `running`.
     observed_state: Literal[
         "pending",
         "provisioning",
@@ -596,6 +612,11 @@ class KubernetesNodePool(TypedDict):
     status: Literal["provisioning", "ready", "updating", "deleting", "unavailable"]
     # The pool's workers that have joined the cluster.
     observed_workers: int
+    # Why the pool's workers last failed to build, e.g. `PROVISIONING_CAPACITY_UNAVAILABLE` (the
+    # region has no room for them now) or `PROVISIONING_LIMIT_EXCEEDED`.
+    failure_code: Optional[str]
+    # A sentence saying what failed and what to do.
+    failure_reason: Optional[str]
     # e.g. `k8spool_...`.
     id: str
     cluster_id: str

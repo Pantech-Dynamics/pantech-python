@@ -4,6 +4,12 @@ All notable changes to the `pantech` package. The newest version heading
 (`## X.Y.Z (YYYY-MM-DD)`) is released when it reaches `main`: see
 `.github/workflows/release.yml`. Put work in progress under `## Unreleased`.
 
+## Unreleased
+
+FEATURES:
+
+- `KubernetesFixedNodeSize` and `fixed_node_sizes` on the Kubernetes versions list: the zones that build nodes only at fixed sizes, one entry per size. Types regenerated from the current public API spec.
+
 ## 0.2.0 (2026-10-28)
 
 FEATURES:
