@@ -4600,6 +4600,71 @@ class DatabasesResource(DatabaseOrderWaiter):
             ),
         )
 
+    def get_snapshot_schedule(
+        self,
+        database_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> SnapshotSchedule:
+        """Get a database's snapshot schedule.
+
+        ``GET /databases/{database_id}/snapshot-schedule``
+
+        Args:
+          database_id: The resource's id.
+        """
+        return cast(
+            "SnapshotSchedule",
+            self._client.request(
+                "GET",
+                f"/databases/{path_param(database_id)}/snapshot-schedule",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def set_snapshot_schedule(
+        self,
+        database_id: str,
+        *,
+        frequency: Literal["daily", "weekly", "monthly"],
+        retention_count: Union[int, NotGiven] = NOT_GIVEN,
+        enabled: Union[bool, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> SnapshotSchedule:
+        """Set a database's snapshot schedule.
+
+        ``PUT /databases/{database_id}/snapshot-schedule``
+
+        Args:
+          database_id: The resource's id.
+          frequency: How often: `daily`, `weekly` or `monthly`.
+          retention_count: How many successful automatic snapshots to keep, 1 to 168; older
+              ones are deleted.
+          enabled: False pauses the schedule without forgetting it.
+        """
+        return cast(
+            "SnapshotSchedule",
+            self._client.request(
+                "PUT",
+                f"/databases/{path_param(database_id)}/snapshot-schedule",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {"frequency": frequency, "retention_count": retention_count, "enabled": enabled}, extra_body
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
 
 class KubernetesNodePoolsResource(SyncResource):
     """Node pools of a Kubernetes cluster."""
