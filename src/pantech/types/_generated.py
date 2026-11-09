@@ -1961,6 +1961,9 @@ class SnapshotSchedule(_SnapshotScheduleRequired, total=False):
     instance_id: Optional[str]
     # The volume snapshotted; null for an instance's schedule.
     volume_id: Optional[str]
+    # The database whose data disk is snapshotted; null for an instance's or a volume's
+    # schedule.
+    database_id: Optional[str]
     # When the next automatic snapshot is due; null while paused.
     next_run_at: Optional[str]
 

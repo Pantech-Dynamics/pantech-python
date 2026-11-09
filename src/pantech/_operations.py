@@ -206,6 +206,16 @@ OPERATIONS: Dict[str, Tuple[str, str, str]] = {
     "changeDatabasePassword": ("PUT", "/databases/{database_id}/password", "databases.change_password"),
     "resetDatabasePassword": ("POST", "/databases/{database_id}/reset-password", "databases.reset_password"),
     "resizeDatabaseStorage": ("POST", "/databases/{database_id}/resize-storage", "databases.resize_storage"),
+    "getDatabaseSnapshotSchedule": (
+        "GET",
+        "/databases/{database_id}/snapshot-schedule",
+        "databases.get_snapshot_schedule",
+    ),
+    "putDatabaseSnapshotSchedule": (
+        "PUT",
+        "/databases/{database_id}/snapshot-schedule",
+        "databases.set_snapshot_schedule",
+    ),
     "listDatabaseSnapshots": ("GET", "/databases/{database_id}/snapshots", "databases.snapshots.list"),
     "createDatabaseSnapshot": ("POST", "/databases/{database_id}/snapshots", "databases.snapshots.create"),
     "getDatabaseSnapshot": (
