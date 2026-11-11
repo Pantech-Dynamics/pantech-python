@@ -4,6 +4,35 @@ All notable changes to the `pantech` package. The newest version heading
 (`## X.Y.Z (YYYY-MM-DD)`) is released when it reaches `main`: see
 `.github/workflows/release.yml`. Put work in progress under `## Unreleased`.
 
+## 0.4.0 (2026-11-10)
+
+FEATURES:
+
+- `client.dns`, Pantech DNS on Pantech's own name servers (two per zone): `dns.zones` (`list`, `create`, `get`, `update`, `delete`, `verify`, `export_zone_file` returning the BIND zone file as text, `import_zone_file`) and `dns.records` (`list`, `create`, `get`, `update` and `delete` with `if_match=` for the record's `version`, `batch` for up to 1000 changes at once). Sync and async.
+- `client.domains`: `list_tlds`, `search`, `check_transfer`, `list`, `get`, `register`, `transfer`, `update` (auto-renew, transfer lock, privacy), `set_name_servers`, `get_contact`, `update_contact`, `renew`, `request_auth_code`, `get_auth_code`, and `domains.orders` (`list`, `get`). Sync and async.
+- `dns.zones.wait(zone_id)` (until the zone has its name servers) and `dns.records.wait(zone_id, record_id)` (until the record set answers), which raise the new `DNSFailedError` when the zone or change fails, and `domains.wait_for_order(order_id)`, which raises `OrderFailedError` with the order's `failure_code`.
+- `PreconditionFailedError` for `412` (`VERSION_CONFLICT`), and `DNSErrorCode`, `DomainErrorCode`, `DNS_ERROR_CODES` and `DOMAIN_ERROR_CODES` for every DNS and domain problem code.
+- `examples/dns_and_domains.py`.
+- `client.registry`, the private container registry: `registry.namespace` (`get`, `set`), `registry.repositories` (`list`, `list_all`, `create`, `get`, `update` for visibility, tag immutability and retention, `delete`), `registry.tags` (`list`, `list_all`, `get`, `delete`) and `registry.tokens` (`list`, `list_all`, `create`, `delete`). Sync and async. The token `create` returns its `secret` in a dict whose `repr()` and `str()` show `<hidden>`.
+- `RegistryErrorCode` and `REGISTRY_ERROR_CODES` for every registry problem code.
+- `examples/container_registry.py`.
+- `client.iam`, teams and access policies: `iam.actions.list`, `iam.settings` (`get`, `update`), `iam.teams` (`list`, `list_all`, `create`, `get`, `update`, `delete`) with `iam.teams.members` (`list`, `list_all`, `add`, `remove`), `iam.policies` (`list`, `list_all`, `create`, `get`, `update` with `if_match=`, `delete`) with `iam.policies.attachments` (`list`, `attach`, `detach`), `iam.effective_access(user_id)` and `iam.simulate(...)`. Sync and async.
+- `pantech.iam.allow(...)`, `pantech.iam.deny(...)` and `pantech.iam.statement(...)`, which build typed policy statements and check the API's limits first, and `pantech.iam.MANAGED_POLICY_IDS`.
+- `IamErrorCode` and `IAM_ERROR_CODES` for every access policy problem code.
+- `examples/access_policies.py`.
+- `iam.members.list` / `list_all`: the organization's members with their teams and policy counts.
+- `client.certificates`, Certificate Manager: `list`, `list_all`, `request`, `import_`, `get`, `update`, `verify`, `reimport`, `export`, `revoke`, `delete`, and `wait(certificate_id)` until it is issued, which raises the new `CertificateFailedError`. Sync and async. `export` returns the private key in a dict whose `repr()` and `str()` show `<hidden>`.
+- `CertificateErrorCode` and `CERTIFICATE_ERROR_CODES` for every certificate problem code.
+- `examples/certificates.py`.
+- `dns.zones.quote()`: the free zone allowance and the monthly price of each further zone.
+- `domains.wait_for_order(...)` raises `PaymentRequiredError` with `payment_url`, `payment_expires_at` and `order` when an order is `awaiting_payment` (your credit does not cover it), instead of waiting silently; `wait_for_payment=True` keeps waiting while the user pays. Domain orders carry `payment_url` and `payment_expires_at`; TLD offers and search results carry `privacy_always_on`.
+- `domains.orders.retry_payment(order_id)` (`POST /domain-orders/{order_id}/retry-payment`): an order waiting in `awaiting_payment` tries its payment again at once and waits another hour; it never charges twice. Sync and async. A `409` `DOMAIN_ORDER_NOT_AWAITING_PAYMENT` (in `DOMAIN_ERROR_CODES`) when the order is not waiting for a payment. `payment_url` is now set only when the bank asks the customer to confirm a saved-card payment in US dollars, so `PaymentRequiredError.payment_url` can be None.
+- HTTPS load balancers: `load_balancers.create` and `update` take `protocol="https"`, `certificate_id`, `tls_policy` and `redirect_http`, and a load balancer reports `certificate_fingerprint_sha256`.
+
+NOTES:
+
+- The vendored spec is the current public API, with DNS, domains, the container registry, IAM, certificates and HTTPS load balancers, so `openapi/pending/` is empty again. The generators now support a request header parameter (`If-Match`), text responses and nullable or multi-status response unions.
+
 ## 0.3.0 (2026-11-06)
 
 FEATURES:

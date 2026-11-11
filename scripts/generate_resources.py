@@ -37,6 +37,10 @@ BASES = {
     "databases": "DatabaseOrderWaiter",
     "migrate.connections": "CloudConnectionWaiter",
     "migrate.scans": "CloudScanWaiter",
+    "dns.zones": "DNSZoneWaiter",
+    "dns.records": "DNSRecordWaiter",
+    "domains": "DomainOrderWaiter",
+    "certificates": "CertificateWaiter",
 }
 
 FAMILY_DOCS = {
@@ -70,8 +74,31 @@ FAMILY_DOCS = {
     "migrate.connections": "Connections to AWS accounts through a read-only role; no access keys are shared.",
     "migrate.scans": "Reads of everything a connection's role can see.",
     "migrate.migrations": "Plans to move what a scan found to Pantech, with a price comparison and a Terraform export.",
+    "iam": "Teams and access policies: who in your organization may do what, on which resources.",
+    "iam.members": "The organization's members, with their teams and how many policies apply to each.",
+    "certificates": "Certificate Manager: TLS certificates Pantech issues and renews, or ones you import.",
+    "iam.actions": "The actions a policy statement can name.",
+    "iam.settings": "Whether members may read everything, or only what their policies allow.",
+    "iam.teams": "Teams of members that policies are attached to.",
+    "iam.teams.members": "Members of a team.",
+    "iam.policies": "Policies: statements that allow or deny actions on resources.",
+    "iam.policies.attachments": "The members and teams a policy is attached to.",
+    "registry": "Pantech Container Registry: a private OCI registry for your images, at registry.pantechdynamics.com.",
+    "registry.namespace": "Your organization's namespace, which every image name starts with.",
+    "registry.repositories": "Repositories in your namespace: visibility, tag immutability and retention.",
+    "registry.tags": "Tags of a repository, and the images they point at.",
+    "registry.tokens": "Registry-only credentials for CI and clusters: pull, or push, for some or every repository.",
+    "dns": "Pantech DNS: hosted zones and their records, on Pantech's own name servers.",
+    "dns.zones": "Hosted zones: create one, delegate your domain to its two name servers, import and export zones.",
+    "dns.records": "Record sets of a zone: one name and type each, with a TTL and values.",
+    "domains": "Domains: search, register, transfer in, renew, and manage name servers, contact and lock.",
+    "domains.orders": "Registrations, renewals and transfers, paid from your credit.",
     "operations": "Follow asynchronous changes.",
 }
+
+# Responses that carry a one-time secret: wrapped so ``repr()`` and logging
+# never show it, while ``result["secret"]`` still reads it.
+HIDDEN_SECRETS = frozenset({"createRegistryToken", "exportCertificate"})
 
 RESERVED = {
     "self",
@@ -83,6 +110,7 @@ RESERVED = {
     "cast",
     "path_param",
     "merge_params",
+    "merge_headers",
 }
 
 
@@ -168,18 +196,18 @@ class Renderer:
 
     def _check_names(self, op: OperationSpec) -> List[Param]:
         seen: Set[str] = set()
-        for p in op.path_params + op.query_params + op.body_params:
+        for p in op.path_params + op.query_params + op.header_params + op.body_params:
             if p.name in RESERVED or p.name in seen:
                 raise SystemExit(f"{op.operation_id}: argument {p.name!r} collides; rename it in the generator")
             seen.add(p.name)
-        return op.path_params + op.query_params + op.body_params
+        return op.path_params + op.query_params + op.header_params + op.body_params
 
     def _signature(self, op: OperationSpec, paginate: bool) -> List[str]:
         sig = ["        self,"]
         for p in op.path_params:
             sig.append(f"        {p.name}: str,")
         kw: List[Param] = [q for q in op.query_params if not (paginate and q.wire == "cursor")]
-        kw += [] if paginate else op.body_params
+        kw += [] if paginate else op.header_params + op.body_params
         sig.append("        *,")
         for p in [p for p in kw if p.required]:
             sig.append(f"        {p.name}: {self.note(p.type)},")
@@ -203,6 +231,8 @@ class Renderer:
             return "AsyncIterator[ServerSentEvent]" if self.is_async else "Iterator[ServerSentEvent]"
         if op.returns in ("None", "bytes"):
             return op.returns
+        if op.returns == "text":
+            return "str"
         return self.note(op.returns)
 
     def _doc(self, op: OperationSpec, paginate: bool) -> List[str]:
@@ -210,7 +240,7 @@ class Renderer:
         if paginate:
             summary = f"{summary}, following ``next_cursor`` through every page"
         doc = [f'        """{docstring_text(summary)}.', "", f"        ``{op.method} {op.path}``"]
-        documented = [p for p in op.path_params + op.query_params + op.body_params if p.doc]
+        documented = [p for p in op.path_params + op.query_params + op.header_params + op.body_params if p.doc]
         if paginate:
             documented = [p for p in documented if p.wire != "cursor" and p not in op.body_params]
         if op.operation_id in self.no_replay and not paginate:
@@ -268,19 +298,23 @@ class Renderer:
             call.append("    idempotency_key=idempotency_key,")
         if op.operation_id in self.no_replay:
             call.append("    no_replay=True,")
-        call.append("    extra_headers=extra_headers,")
+        if op.header_params:
+            call.append(f"    extra_headers=merge_headers({self._dict(op.header_params)}, extra_headers),")
+        else:
+            call.append("    extra_headers=extra_headers,")
         call.append("    timeout=timeout,")
-        if op.returns == "bytes":
-            call.append('    parse_as="bytes",')
+        if op.returns in ("bytes", "text"):
+            call.append(f'    parse_as="{op.returns}",')
         call.append(")")
         if op.returns == "None":
             lines.append("        " + call[0])
             lines += ["        " + c for c in call[1:]]
             lines.append("        return None")
         else:
-            lines.append(f'        return cast("{ret}", {call[0]}')
+            wrap = op.operation_id in HIDDEN_SECRETS
+            lines.append(f'        return cast("{ret}", {"hide_secret(" if wrap else ""}{call[0]}')
             lines += ["            " + c for c in call[1:-1]]
-            lines.append("            ),")
+            lines.append("            ))," if wrap else "            ),")
             lines.append("        )")
         return lines
 
@@ -336,7 +370,10 @@ class Renderer:
             "",
             "from .._resource import (",
         ]
-        res_names = sorted({self.prefix + b for b in BASES.values()} | {self.plain_base, "merge_params", "path_param"})
+        res_names = sorted(
+            {self.prefix + b for b in BASES.values()}
+            | {self.plain_base, "hide_secret", "merge_headers", "merge_params", "path_param"}
+        )
         header += [f"    {n}," for n in res_names]
         header += [
             ")",

@@ -6,12 +6,30 @@ import math
 from typing import TYPE_CHECKING, Any, Dict, FrozenSet, Mapping, Optional, cast
 from urllib.parse import quote
 
-from ._exceptions import CloudFailedError, OperationFailedError, OrderFailedError, WaitTimeoutError
+from ._exceptions import (
+    CertificateFailedError,
+    CloudFailedError,
+    DNSFailedError,
+    OperationFailedError,
+    OrderFailedError,
+    PaymentRequiredError,
+    WaitTimeoutError,
+)
 from ._types import NotGiven
 
 if TYPE_CHECKING:
     from ._base_client import AsyncAPIClient, SyncAPIClient
-    from .types import CloudConnection, CloudScan, DatabaseOrder, InstanceOrder, Operation
+    from .types import (
+        Certificate,
+        CloudConnection,
+        CloudScan,
+        DatabaseOrder,
+        DNSRecord,
+        DNSZone,
+        DomainOrder,
+        InstanceOrder,
+        Operation,
+    )
 
 __all__ = [
     "SyncResource",
@@ -26,6 +44,14 @@ __all__ = [
     "AsyncCloudConnectionWaiter",
     "CloudScanWaiter",
     "AsyncCloudScanWaiter",
+    "DNSZoneWaiter",
+    "AsyncDNSZoneWaiter",
+    "DNSRecordWaiter",
+    "AsyncDNSRecordWaiter",
+    "DomainOrderWaiter",
+    "CertificateWaiter",
+    "AsyncCertificateWaiter",
+    "AsyncDomainOrderWaiter",
 ]
 
 OPERATION_DONE = frozenset({"succeeded", "failed"})
@@ -33,6 +59,13 @@ ORDER_DONE = frozenset({"provisioned", "failed", "payment_failed"})
 ORDER_FAILED = frozenset({"failed", "payment_failed"})
 CONNECTION_DONE = frozenset({"connected", "failed"})
 SCAN_DONE = frozenset({"succeeded", "failed"})
+RECORD_DONE = frozenset({"active", "failed"})
+CERTIFICATE_READY = frozenset({"issued", "renewing"})
+CERTIFICATE_DONE = CERTIFICATE_READY | {"failed", "revoked", "expired"}
+ZONE_READY = frozenset({"awaiting_delegation", "active"})
+ZONE_DONE = ZONE_READY | {"failed", "deleting", "deleted"}
+DOMAIN_ORDER_DONE = frozenset({"succeeded", "failed"})
+DOMAIN_ORDER_DONE_OR_UNPAID = DOMAIN_ORDER_DONE | {"awaiting_payment"}
 
 
 def path_param(value: str) -> str:
@@ -342,6 +375,269 @@ class AsyncCloudScanWaiter(AsyncResource):
         path = f"/cloud-scans/{path_param(scan_id)}"
         scan = await _wait_cloud_async(self, "scan", path, scan_id, SCAN_DONE, timeout, poll_interval)
         return cast("CloudScan", scan)
+
+
+def _wait_status_sync(
+    resource: SyncResource,
+    what: str,
+    path: str,
+    ident: str,
+    done: FrozenSet[str],
+    timeout: Optional[float],
+    poll_interval: float,
+) -> Dict[str, Any]:
+    """Polls *path* until its ``status`` is in *done*; the caller decides what a failure means."""
+    _check_wait_args(timeout, poll_interval)
+    client = resource._client
+    deadline = None if timeout is None else client._clock() + timeout
+    while True:
+        item = cast(Dict[str, Any], client.request("GET", path))
+        status = str(item.get("status") or "")
+        if status in done:
+            return item
+        delay = poll_interval
+        if deadline is not None:
+            remaining = deadline - client._clock()
+            if remaining <= 0:
+                raise _timed_out(what, ident, status, timeout)
+            delay = min(delay, remaining)
+        client._sleep(delay)
+
+
+async def _wait_status_async(
+    resource: AsyncResource,
+    what: str,
+    path: str,
+    ident: str,
+    done: FrozenSet[str],
+    timeout: Optional[float],
+    poll_interval: float,
+) -> Dict[str, Any]:
+    _check_wait_args(timeout, poll_interval)
+    client = resource._client
+    deadline = None if timeout is None else client._clock() + timeout
+    while True:
+        item = cast(Dict[str, Any], await client.request("GET", path))
+        status = str(item.get("status") or "")
+        if status in done:
+            return item
+        delay = poll_interval
+        if deadline is not None:
+            remaining = deadline - client._clock()
+            if remaining <= 0:
+                raise _timed_out(what, ident, status, timeout)
+            delay = min(delay, remaining)
+        await client._sleep(delay)
+
+
+class DNSZoneWaiter(SyncResource):
+    def wait(self, zone_id: str, *, timeout: Optional[float] = 300.0, poll_interval: float = 3.0) -> DNSZone:
+        """Polls ``GET /dns/zones/{id}`` until the zone has its name servers.
+
+        That is ``awaiting_delegation`` (set them at your registrar) or
+        ``active``; delegation itself is up to your registrar. Raises
+        ``DNSFailedError`` if the zone fails or is being deleted, and
+        ``WaitTimeoutError`` after *timeout* seconds (``None`` waits forever).
+        """
+        path = f"/dns/zones/{path_param(zone_id)}"
+        zone = _wait_status_sync(self, "DNS zone", path, zone_id, ZONE_DONE, timeout, poll_interval)
+        if zone.get("status") not in ZONE_READY:
+            raise DNSFailedError("zone", zone)
+        return cast("DNSZone", zone)
+
+
+class AsyncDNSZoneWaiter(AsyncResource):
+    async def wait(self, zone_id: str, *, timeout: Optional[float] = 300.0, poll_interval: float = 3.0) -> DNSZone:
+        """Polls ``GET /dns/zones/{id}`` until the zone has its name servers.
+
+        That is ``awaiting_delegation`` (set them at your registrar) or
+        ``active``; delegation itself is up to your registrar. Raises
+        ``DNSFailedError`` if the zone fails or is being deleted, and
+        ``WaitTimeoutError`` after *timeout* seconds (``None`` waits forever).
+        """
+        path = f"/dns/zones/{path_param(zone_id)}"
+        zone = await _wait_status_async(self, "DNS zone", path, zone_id, ZONE_DONE, timeout, poll_interval)
+        if zone.get("status") not in ZONE_READY:
+            raise DNSFailedError("zone", zone)
+        return cast("DNSZone", zone)
+
+
+class CertificateWaiter(SyncResource):
+    def wait(self, certificate_id: str, *, timeout: Optional[float] = 600.0, poll_interval: float = 5.0) -> Certificate:
+        """Polls ``GET /certificates/{id}`` until the certificate is ``issued``.
+
+        With Pantech DNS that is usually within two minutes. A name validated by
+        CNAME waits until you add it (up to 72 hours): pass a longer *timeout*,
+        or ``None``. Raises ``CertificateFailedError`` when it fails, is revoked
+        or expires, and ``WaitTimeoutError`` after *timeout* seconds.
+        """
+        path = f"/certificates/{path_param(certificate_id)}"
+        cert = _wait_status_sync(self, "Certificate", path, certificate_id, CERTIFICATE_DONE, timeout, poll_interval)
+        if cert.get("status") not in CERTIFICATE_READY:
+            raise CertificateFailedError(cert)
+        return cast("Certificate", cert)
+
+
+class AsyncCertificateWaiter(AsyncResource):
+    async def wait(
+        self, certificate_id: str, *, timeout: Optional[float] = 600.0, poll_interval: float = 5.0
+    ) -> Certificate:
+        """Polls ``GET /certificates/{id}`` until the certificate is ``issued``.
+
+        With Pantech DNS that is usually within two minutes. A name validated by
+        CNAME waits until you add it (up to 72 hours): pass a longer *timeout*,
+        or ``None``. Raises ``CertificateFailedError`` when it fails, is revoked
+        or expires, and ``WaitTimeoutError`` after *timeout* seconds.
+        """
+        path = f"/certificates/{path_param(certificate_id)}"
+        cert = await _wait_status_async(
+            self, "Certificate", path, certificate_id, CERTIFICATE_DONE, timeout, poll_interval
+        )
+        if cert.get("status") not in CERTIFICATE_READY:
+            raise CertificateFailedError(cert)
+        return cast("Certificate", cert)
+
+
+def _record_path(zone_id: str, record_id: str) -> str:
+    return f"/dns/zones/{path_param(zone_id)}/records/{path_param(record_id)}"
+
+
+class DNSRecordWaiter(SyncResource):
+    def wait(
+        self, zone_id: str, record_id: str, *, timeout: Optional[float] = 300.0, poll_interval: float = 3.0
+    ) -> DNSRecord:
+        """Polls ``GET /dns/zones/{zone_id}/records/{record_id}`` until the record set is ``active``.
+
+        A change is usually live within a minute. Raises ``DNSFailedError``
+        when it fails (the record set keeps its last good values), and
+        ``WaitTimeoutError`` after *timeout* seconds (``None`` waits forever).
+        """
+        path = _record_path(zone_id, record_id)
+        record = _wait_status_sync(self, "DNS record", path, record_id, RECORD_DONE, timeout, poll_interval)
+        if record.get("status") == "failed":
+            raise DNSFailedError("record", record)
+        return cast("DNSRecord", record)
+
+
+class AsyncDNSRecordWaiter(AsyncResource):
+    async def wait(
+        self, zone_id: str, record_id: str, *, timeout: Optional[float] = 300.0, poll_interval: float = 3.0
+    ) -> DNSRecord:
+        """Polls ``GET /dns/zones/{zone_id}/records/{record_id}`` until the record set is ``active``.
+
+        A change is usually live within a minute. Raises ``DNSFailedError``
+        when it fails (the record set keeps its last good values), and
+        ``WaitTimeoutError`` after *timeout* seconds (``None`` waits forever).
+        """
+        path = _record_path(zone_id, record_id)
+        record = await _wait_status_async(self, "DNS record", path, record_id, RECORD_DONE, timeout, poll_interval)
+        if record.get("status") == "failed":
+            raise DNSFailedError("record", record)
+        return cast("DNSRecord", record)
+
+
+def _domain_order_result(order: Dict[str, Any]) -> DomainOrder:
+    status = order.get("status")
+    if status == "failed":
+        raise OrderFailedError("Domain", order)
+    if status == "awaiting_payment":
+        raise PaymentRequiredError.for_order("Domain", order)
+    return cast("DomainOrder", order)
+
+
+class DomainOrderWaiter(SyncResource):
+    def wait_for_order(
+        self,
+        order_id: str,
+        *,
+        timeout: Optional[float] = 900.0,
+        poll_interval: float = 5.0,
+        wait_for_payment: bool = False,
+    ) -> DomainOrder:
+        """Polls ``GET /domain-orders/{id}`` until the order ``succeeded``.
+
+        An order your credit does not cover waits in ``awaiting_payment`` for an
+        hour (in US dollars the saved card is charged the difference; in naira
+        the user adds credit): this raises ``PaymentRequiredError`` with
+        ``payment_expires_at``, and ``payment_url`` only when the bank asks the
+        user to confirm the payment. Call again with ``wait_for_payment=True``
+        to keep waiting, or ``orders.retry_payment(order_id)`` to try again at
+        once; an order not paid in time fails ``insufficient_credit`` and
+        nothing is charged.
+
+        Raises ``OrderFailedError`` when it ``failed`` (its ``code`` is the
+        order's ``failure_code``; any amount taken is returned to your credit),
+        and ``WaitTimeoutError`` after *timeout* seconds. A transfer can take
+        days: pass a longer *timeout*, or ``None``, or check the order later.
+        """
+        path = f"/domain-orders/{path_param(order_id)}"
+        done = DOMAIN_ORDER_DONE if wait_for_payment else DOMAIN_ORDER_DONE_OR_UNPAID
+        order = _wait_status_sync(self, "Domain order", path, order_id, done, timeout, poll_interval)
+        return _domain_order_result(order)
+
+
+class AsyncDomainOrderWaiter(AsyncResource):
+    async def wait_for_order(
+        self,
+        order_id: str,
+        *,
+        timeout: Optional[float] = 900.0,
+        poll_interval: float = 5.0,
+        wait_for_payment: bool = False,
+    ) -> DomainOrder:
+        """Polls ``GET /domain-orders/{id}`` until the order ``succeeded``.
+
+        An order your credit does not cover waits in ``awaiting_payment`` for an
+        hour (in US dollars the saved card is charged the difference; in naira
+        the user adds credit): this raises ``PaymentRequiredError`` with
+        ``payment_expires_at``, and ``payment_url`` only when the bank asks the
+        user to confirm the payment. Call again with ``wait_for_payment=True``
+        to keep waiting, or ``orders.retry_payment(order_id)`` to try again at
+        once; an order not paid in time fails ``insufficient_credit`` and
+        nothing is charged.
+
+        Raises ``OrderFailedError`` when it ``failed`` (its ``code`` is the
+        order's ``failure_code``; any amount taken is returned to your credit),
+        and ``WaitTimeoutError`` after *timeout* seconds. A transfer can take
+        days: pass a longer *timeout*, or ``None``, or check the order later.
+        """
+        path = f"/domain-orders/{path_param(order_id)}"
+        done = DOMAIN_ORDER_DONE if wait_for_payment else DOMAIN_ORDER_DONE_OR_UNPAID
+        order = await _wait_status_async(self, "Domain order", path, order_id, done, timeout, poll_interval)
+        return _domain_order_result(order)
+
+
+# Response fields that are secrets: a new registry token's ``secret`` and an
+# exported certificate's ``private_key_pem``.
+SECRET_FIELDS = frozenset({"secret", "private_key_pem"})
+
+
+class _SecretHiddenDict(Dict[str, Any]):
+    """A response dict whose secret fields never appear in ``repr()``, ``str()`` or logs.
+
+    ``value["secret"]`` reads one; ``json.dumps`` and ``dict(value)`` keep it,
+    because writing it to your own secret store is the point.
+    """
+
+    def __repr__(self) -> str:
+        return repr({k: ("<hidden>" if k in SECRET_FIELDS else v) for k, v in self.items()})
+
+    __str__ = __repr__
+
+
+def hide_secret(value: Any) -> Any:
+    """Wraps a response that carries a secret (a new registry token, an exported private key)."""
+    if isinstance(value, dict):
+        return _SecretHiddenDict(value)
+    return value
+
+
+def merge_headers(values: Dict[str, Any], extra: Optional[Mapping[str, str]]) -> Optional[Dict[str, str]]:
+    """Request headers from typed arguments (``if_match``), skipping NOT_GIVEN, plus ``extra_headers``."""
+    out = {k: str(v) for k, v in values.items() if not isinstance(v, NotGiven) and v is not None}
+    if extra:
+        out.update(extra)
+    return out or None
 
 
 def merge_params(values: Dict[str, Any], extra: Optional[Mapping[str, Any]]) -> Dict[str, Any]:

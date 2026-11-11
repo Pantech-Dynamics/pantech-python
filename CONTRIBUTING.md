@@ -65,6 +65,13 @@ missing. An operation the SDK deliberately leaves out goes in `NOT_IN_SDK` there
 reason; the generators skip it and the types only it uses. Commit the generated files, and never
 edit them by hand: change the generator instead.
 
+Endpoints the API serves before the published spec describes them go in `openapi/pending/*.yaml`
+(paths and the components they use). `scripts/_spec.py` merges them in only where the published
+spec lacks them, so the published spec always wins; delete the file once it has them. A file with
+`x-pending-replace-until: <JSON pointer>` instead replaces the routes and schemas it lists, for as
+long as the pointer is not in the vendored spec: for endpoints the vendored copy has without fields
+the API added since.
+
 ## Guidelines
 
 - The only runtime dependency is `httpx`. PyYAML is for the scripts and tests only.

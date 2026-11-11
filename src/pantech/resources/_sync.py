@@ -7,12 +7,18 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Dict, Iterator, List, Literal, Optional, Union, cast
 
 from .._resource import (
+    CertificateWaiter,
     CloudConnectionWaiter,
     CloudScanWaiter,
     DatabaseOrderWaiter,
+    DNSRecordWaiter,
+    DNSZoneWaiter,
+    DomainOrderWaiter,
     InstanceOrderWaiter,
     OperationsWaiter,
     SyncResource,
+    hide_secret,
+    merge_headers,
     merge_params,
     path_param,
 )
@@ -21,6 +27,8 @@ from .._types import NOT_GIVEN, Body, Headers, NotGiven, Query, Timeout
 from ..types._generated import (
     Accepted,
     ApplyKubernetesManifestResponse,
+    Certificate,
+    CertificateList,
     CloudConnection,
     CloudConnectionList,
     CloudScan,
@@ -38,12 +46,46 @@ from ..types._generated import (
     DatabasePasswordAccepted,
     DiskOffering,
     DiskOfferingList,
+    DNSRecord,
+    DNSRecordBatchResult,
+    DNSRecordChange,
+    DNSRecordList,
+    DNSZone,
+    DNSZoneList,
+    DNSZoneQuote,
+    Domain,
+    DomainAuthCode,
+    DomainAuthCodePending,
+    DomainContact,
+    DomainList,
+    DomainOrder,
+    DomainOrderList,
+    DomainSearchResult,
+    DomainSearchResultList,
+    DomainTransferCheck,
+    DomainWithOrder,
+    ExportedCertificate,
     ExposeKubernetesServiceResponse,
     FirewallRule,
     FirewallRuleList,
     GeneratedSSHKey,
     GetKubernetesLiveManifestsResponse,
     GetKubernetesWorkloadsResponse,
+    IamActionList,
+    IamAttachment,
+    IamAttachmentList,
+    IamEffectiveAccess,
+    IamMember,
+    IamMemberList,
+    IamPolicy,
+    IamPolicyList,
+    IamSettings,
+    IamSimulation,
+    IamStatement,
+    IamTeam,
+    IamTeamList,
+    IamTeamMember,
+    IamTeamMemberList,
     Image,
     ImageList,
     Instance,
@@ -89,6 +131,15 @@ from ..types._generated import (
     ReceiptList,
     Region,
     RegionList,
+    RegistryNamespace,
+    RegistryRepository,
+    RegistryRepositoryList,
+    RegistryRetentionInput,
+    RegistryTag,
+    RegistryTagList,
+    RegistryToken,
+    RegistryTokenList,
+    RegistryTokenWithSecret,
     SecurityGroup,
     SecurityGroupList,
     SecurityGroupRule,
@@ -101,6 +152,8 @@ from ..types._generated import (
     Subnet,
     SubnetList,
     SyncKubernetesRoutingResponse,
+    TLDOffer,
+    TLDOfferList,
     UsageByResource,
     UsageSummary,
     Volume,
@@ -2830,7 +2883,10 @@ class LoadBalancersResource(SyncResource):
         name: str,
         public_port: int,
         zone_id: Union[str, NotGiven] = NOT_GIVEN,
-        protocol: Union[Literal["tcp"], NotGiven] = NOT_GIVEN,
+        protocol: Union[Literal["tcp", "https"], NotGiven] = NOT_GIVEN,
+        certificate_id: Union[str, NotGiven] = NOT_GIVEN,
+        tls_policy: Union[Literal["modern", "tls13"], NotGiven] = NOT_GIVEN,
+        redirect_http: Union[bool, NotGiven] = NOT_GIVEN,
         kind: Union[Literal["vpc_native", "appliance"], NotGiven] = NOT_GIVEN,
         public_ip_id: Union[str, NotGiven] = NOT_GIVEN,
         subnet_id: Union[str, NotGiven] = NOT_GIVEN,
@@ -2853,6 +2909,12 @@ class LoadBalancersResource(SyncResource):
           zone_id: The zone to place the load balancer in, by its code as `GET
               /public/v1/regions` lists it.
           protocol: The listener protocol.
+          certificate_id: `https` only, and required there: an issued certificate from
+              `/public/v1/certificates`.
+          tls_policy: `https` only. `modern`: TLS 1.2 and 1.3 with forward-secret AEAD
+              ciphers only.
+          redirect_http: `https` only. Also answer port 80, redirecting every request to
+              HTTPS with a `301`.
           kind: `vpc_native` (a VPC zone: needs `public_ip_id` and `subnet_id`) or
               `appliance` (a standard zone: needs `zone_id`; a load balancer VM with its own
               public address, billed as that VM).
@@ -2877,6 +2939,9 @@ class LoadBalancersResource(SyncResource):
                         "name": name,
                         "zone_id": zone_id,
                         "protocol": protocol,
+                        "certificate_id": certificate_id,
+                        "tls_policy": tls_policy,
+                        "redirect_http": redirect_http,
                         "kind": kind,
                         "public_ip_id": public_ip_id,
                         "subnet_id": subnet_id,
@@ -2927,6 +2992,9 @@ class LoadBalancersResource(SyncResource):
         name: Union[str, NotGiven] = NOT_GIVEN,
         algorithm: Union[Literal["roundrobin", "leastconn", "source"], NotGiven] = NOT_GIVEN,
         instance_ids: Union[List[str], NotGiven] = NOT_GIVEN,
+        certificate_id: Union[str, NotGiven] = NOT_GIVEN,
+        tls_policy: Union[Literal["modern", "tls13"], NotGiven] = NOT_GIVEN,
+        redirect_http: Union[bool, NotGiven] = NOT_GIVEN,
         idempotency_key: Optional[str] = None,
         extra_headers: Optional[Headers] = None,
         extra_query: Optional[Query] = None,
@@ -2941,6 +3009,9 @@ class LoadBalancersResource(SyncResource):
           load_balancer_id: The load balancer's id (`lb_…`).
           name: A new name, 1 to 63 characters.
           instance_ids: The whole new set of targets (at most 50).
+          certificate_id: `https` only: serve this certificate instead.
+          tls_policy: `https` only.
+          redirect_http: `https` only: turn the port 80 redirect on or off.
         """
         return cast(
             "Accepted",
@@ -2948,7 +3019,17 @@ class LoadBalancersResource(SyncResource):
                 "PATCH",
                 f"/load-balancers/{path_param(load_balancer_id)}",
                 query=merge_params({}, extra_query),
-                body=merge_params({"name": name, "algorithm": algorithm, "instance_ids": instance_ids}, extra_body),
+                body=merge_params(
+                    {
+                        "name": name,
+                        "algorithm": algorithm,
+                        "instance_ids": instance_ids,
+                        "certificate_id": certificate_id,
+                        "tls_policy": tls_policy,
+                        "redirect_http": redirect_http,
+                    },
+                    extra_body,
+                ),
                 idempotency_key=idempotency_key,
                 extra_headers=extra_headers,
                 timeout=timeout,
@@ -6494,6 +6575,2896 @@ class MigrateResource(SyncResource):
         self.migrations = MigrateMigrationsResource(client)
 
 
+class CertificatesResource(CertificateWaiter):
+    """Certificate Manager: TLS certificates Pantech issues and renews, or ones you import."""
+
+    def list(
+        self,
+        *,
+        q: Union[str, NotGiven] = NOT_GIVEN,
+        status: Union[
+            Literal["pending_validation", "issuing", "issued", "renewing", "expired", "revoked", "failed"], NotGiven
+        ] = NOT_GIVEN,
+        kind: Union[Literal["public", "imported"], NotGiven] = NOT_GIVEN,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        cursor: Union[str, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> CertificateList:
+        """List certificates.
+
+        ``GET /certificates``
+
+        Args:
+          q: Only certificates with a name containing this text (case-insensitive), at most
+              255 characters.
+          status: Only certificates in this status.
+          kind: Only certificates Pantech issues (`public`) or you imported (`imported`).
+          limit: Items per page, 1 to 100.
+          cursor: The previous page's `next_cursor`, to get the next page.
+        """
+        return cast(
+            "CertificateList",
+            self._client.request(
+                "GET",
+                "/certificates",
+                query=merge_params(
+                    {"q": q, "status": status, "kind": kind, "limit": limit, "cursor": cursor}, extra_query
+                ),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list_all(
+        self,
+        *,
+        q: Union[str, NotGiven] = NOT_GIVEN,
+        status: Union[
+            Literal["pending_validation", "issuing", "issued", "renewing", "expired", "revoked", "failed"], NotGiven
+        ] = NOT_GIVEN,
+        kind: Union[Literal["public", "imported"], NotGiven] = NOT_GIVEN,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Iterator[Certificate]:
+        """List certificates, following ``next_cursor`` through every page.
+
+        ``GET /certificates``
+
+        Args:
+          q: Only certificates with a name containing this text (case-insensitive), at most
+              255 characters.
+          status: Only certificates in this status.
+          kind: Only certificates Pantech issues (`public`) or you imported (`imported`).
+          limit: Items per page, 1 to 100.
+        """
+        return self._client._paginate(
+            "/certificates",
+            query=merge_params({"q": q, "status": status, "kind": kind, "limit": limit}, extra_query),
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+
+    def request(
+        self,
+        *,
+        names: List[str],
+        key_type: Union[Literal["ecdsa-p256", "rsa-2048"], NotGiven] = NOT_GIVEN,
+        exportable: Union[bool, NotGiven] = NOT_GIVEN,
+        description: Union[str, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Certificate:
+        """Request a certificate.
+
+        ``POST /certificates``
+
+        Args:
+          names: 1 to 100 names; wildcards as `*.example.com`.
+          key_type: Default `ecdsa-p256`.
+          exportable: Allow exporting the private key later.
+          description: Your note about it.
+        """
+        return cast(
+            "Certificate",
+            self._client.request(
+                "POST",
+                "/certificates",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {"names": names, "key_type": key_type, "exportable": exportable, "description": description},
+                    extra_body,
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def import_(
+        self,
+        *,
+        certificate_pem: str,
+        private_key_pem: str,
+        chain_pem: Union[str, NotGiven] = NOT_GIVEN,
+        exportable: Union[bool, NotGiven] = NOT_GIVEN,
+        description: Union[str, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Certificate:
+        """Import a certificate.
+
+        ``POST /certificates/import``
+
+        Args:
+          certificate_pem: The certificate, PEM.
+          chain_pem: The intermediates, PEM, the certificate's issuer first.
+          private_key_pem: The unencrypted private key, PEM.
+          exportable: Allow exporting the private key later.
+          description: Your note about it.
+        """
+        return cast(
+            "Certificate",
+            self._client.request(
+                "POST",
+                "/certificates/import",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {
+                        "certificate_pem": certificate_pem,
+                        "chain_pem": chain_pem,
+                        "private_key_pem": private_key_pem,
+                        "exportable": exportable,
+                        "description": description,
+                    },
+                    extra_body,
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def get(
+        self,
+        certificate_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Certificate:
+        """Get a certificate.
+
+        ``GET /certificates/{certificate_id}``
+
+        Args:
+          certificate_id: The certificate's id (`cert_…`).
+        """
+        return cast(
+            "Certificate",
+            self._client.request(
+                "GET",
+                f"/certificates/{path_param(certificate_id)}",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def update(
+        self,
+        certificate_id: str,
+        *,
+        description: Union[str, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Certificate:
+        """Change a certificate.
+
+        ``PATCH /certificates/{certificate_id}``
+
+        Args:
+          certificate_id: The certificate's id (`cert_…`).
+          description: Your note about it.
+        """
+        return cast(
+            "Certificate",
+            self._client.request(
+                "PATCH",
+                f"/certificates/{path_param(certificate_id)}",
+                query=merge_params({}, extra_query),
+                body=merge_params({"description": description}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def delete(
+        self,
+        certificate_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> None:
+        """Delete a certificate.
+
+        ``DELETE /certificates/{certificate_id}``
+
+        Args:
+          certificate_id: The certificate's id (`cert_…`).
+        """
+        self._client.request(
+            "DELETE",
+            f"/certificates/{path_param(certificate_id)}",
+            query=merge_params({}, extra_query),
+            idempotency_key=idempotency_key,
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+        return None
+
+    def verify(
+        self,
+        certificate_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Certificate:
+        """Check a certificate's CNAMEs now.
+
+        ``POST /certificates/{certificate_id}/verify``
+
+        Args:
+          certificate_id: The certificate's id (`cert_…`).
+        """
+        return cast(
+            "Certificate",
+            self._client.request(
+                "POST",
+                f"/certificates/{path_param(certificate_id)}/verify",
+                query=merge_params({}, extra_query),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def reimport(
+        self,
+        certificate_id: str,
+        *,
+        certificate_pem: str,
+        private_key_pem: str,
+        chain_pem: Union[str, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Certificate:
+        """Replace an imported certificate.
+
+        ``POST /certificates/{certificate_id}/reimport``
+
+        Args:
+          certificate_id: The certificate's id (`cert_…`).
+          certificate_pem: The certificate, PEM.
+          chain_pem: The intermediates, PEM, the certificate's issuer first.
+          private_key_pem: The unencrypted private key, PEM.
+        """
+        return cast(
+            "Certificate",
+            self._client.request(
+                "POST",
+                f"/certificates/{path_param(certificate_id)}/reimport",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {"certificate_pem": certificate_pem, "chain_pem": chain_pem, "private_key_pem": private_key_pem},
+                    extra_body,
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def export(
+        self,
+        certificate_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> ExportedCertificate:
+        """Export a certificate and its private key.
+
+        ``POST /certificates/{certificate_id}/export``
+
+        Args:
+          certificate_id: The certificate's id (`cert_…`).
+        """
+        return cast(
+            "ExportedCertificate",
+            hide_secret(
+                self._client.request(
+                    "POST",
+                    f"/certificates/{path_param(certificate_id)}/export",
+                    query=merge_params({}, extra_query),
+                    idempotency_key=idempotency_key,
+                    extra_headers=extra_headers,
+                    timeout=timeout,
+                )
+            ),
+        )
+
+    def revoke(
+        self,
+        certificate_id: str,
+        *,
+        reason: Union[Literal["unspecified", "key_compromise"], NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Certificate:
+        """Revoke a certificate.
+
+        ``POST /certificates/{certificate_id}/revoke``
+
+        Args:
+          certificate_id: The certificate's id (`cert_…`).
+          reason: Default `unspecified`.
+        """
+        return cast(
+            "Certificate",
+            self._client.request(
+                "POST",
+                f"/certificates/{path_param(certificate_id)}/revoke",
+                query=merge_params({}, extra_query),
+                body=merge_params({"reason": reason}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+
+class IamMembersResource(SyncResource):
+    """The organization's members, with their teams and how many policies apply to each."""
+
+    def list(
+        self,
+        *,
+        q: Union[str, NotGiven] = NOT_GIVEN,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        cursor: Union[str, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> IamMemberList:
+        """List members.
+
+        ``GET /iam/members``
+
+        Args:
+          q: Only members whose email or name contains this text (case-insensitive), at most
+              320 characters.
+          limit: Items per page, 1 to 100.
+          cursor: The previous page's `next_cursor`, to get the next page.
+        """
+        return cast(
+            "IamMemberList",
+            self._client.request(
+                "GET",
+                "/iam/members",
+                query=merge_params({"q": q, "limit": limit, "cursor": cursor}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list_all(
+        self,
+        *,
+        q: Union[str, NotGiven] = NOT_GIVEN,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Iterator[IamMember]:
+        """List members, following ``next_cursor`` through every page.
+
+        ``GET /iam/members``
+
+        Args:
+          q: Only members whose email or name contains this text (case-insensitive), at most
+              320 characters.
+          limit: Items per page, 1 to 100.
+        """
+        return self._client._paginate(
+            "/iam/members",
+            query=merge_params({"q": q, "limit": limit}, extra_query),
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+
+
+class IamActionsResource(SyncResource):
+    """The actions a policy statement can name."""
+
+    def list(
+        self,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> IamActionList:
+        """List actions.
+
+        ``GET /iam/actions``
+        """
+        return cast(
+            "IamActionList",
+            self._client.request(
+                "GET",
+                "/iam/actions",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+
+class IamSettingsResource(SyncResource):
+    """Whether members may read everything, or only what their policies allow."""
+
+    def get(
+        self,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> IamSettings:
+        """Get the access setting.
+
+        ``GET /iam/settings``
+        """
+        return cast(
+            "IamSettings",
+            self._client.request(
+                "GET",
+                "/iam/settings",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def update(
+        self,
+        *,
+        member_baseline: Literal["read", "none"],
+        if_match: Union[int, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> IamSettings:
+        """Change the access setting.
+
+        ``PUT /iam/settings``
+
+        Args:
+          if_match: The version you read; the change is refused with `412 VERSION_CONFLICT`
+              if it is not the current one.
+        """
+        return cast(
+            "IamSettings",
+            self._client.request(
+                "PUT",
+                "/iam/settings",
+                query=merge_params({}, extra_query),
+                body=merge_params({"member_baseline": member_baseline}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=merge_headers({"If-Match": if_match}, extra_headers),
+                timeout=timeout,
+            ),
+        )
+
+
+class IamTeamsMembersResource(SyncResource):
+    """Members of a team."""
+
+    def list(
+        self,
+        team_id: str,
+        *,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        cursor: Union[str, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> IamTeamMemberList:
+        """List a team's members.
+
+        ``GET /iam/teams/{team_id}/members``
+
+        Args:
+          limit: Items per page, 1 to 100.
+          cursor: The previous page's `next_cursor`, to get the next page.
+        """
+        return cast(
+            "IamTeamMemberList",
+            self._client.request(
+                "GET",
+                f"/iam/teams/{path_param(team_id)}/members",
+                query=merge_params({"limit": limit, "cursor": cursor}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list_all(
+        self,
+        team_id: str,
+        *,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Iterator[IamTeamMember]:
+        """List a team's members, following ``next_cursor`` through every page.
+
+        ``GET /iam/teams/{team_id}/members``
+
+        Args:
+          limit: Items per page, 1 to 100.
+        """
+        return self._client._paginate(
+            f"/iam/teams/{path_param(team_id)}/members",
+            query=merge_params({"limit": limit}, extra_query),
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+
+    def add(
+        self,
+        team_id: str,
+        user_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> IamTeamMember:
+        """Add a member to a team.
+
+        ``PUT /iam/teams/{team_id}/members/{user_id}``
+        """
+        return cast(
+            "IamTeamMember",
+            self._client.request(
+                "PUT",
+                f"/iam/teams/{path_param(team_id)}/members/{path_param(user_id)}",
+                query=merge_params({}, extra_query),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def remove(
+        self,
+        team_id: str,
+        user_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> None:
+        """Remove a member from a team.
+
+        ``DELETE /iam/teams/{team_id}/members/{user_id}``
+        """
+        self._client.request(
+            "DELETE",
+            f"/iam/teams/{path_param(team_id)}/members/{path_param(user_id)}",
+            query=merge_params({}, extra_query),
+            idempotency_key=idempotency_key,
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+        return None
+
+
+class IamTeamsResource(SyncResource):
+    """Teams of members that policies are attached to."""
+
+    members: IamTeamsMembersResource
+
+    def __init__(self, client: SyncAPIClient) -> None:
+        super().__init__(client)
+        self.members = IamTeamsMembersResource(client)
+
+    def list(
+        self,
+        *,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        cursor: Union[str, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> IamTeamList:
+        """List teams.
+
+        ``GET /iam/teams``
+
+        Args:
+          limit: Items per page, 1 to 100.
+          cursor: The previous page's `next_cursor`, to get the next page.
+        """
+        return cast(
+            "IamTeamList",
+            self._client.request(
+                "GET",
+                "/iam/teams",
+                query=merge_params({"limit": limit, "cursor": cursor}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list_all(
+        self,
+        *,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Iterator[IamTeam]:
+        """List teams, following ``next_cursor`` through every page.
+
+        ``GET /iam/teams``
+
+        Args:
+          limit: Items per page, 1 to 100.
+        """
+        return self._client._paginate(
+            "/iam/teams",
+            query=merge_params({"limit": limit}, extra_query),
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+
+    def create(
+        self,
+        *,
+        name: str,
+        description: Union[str, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> IamTeam:
+        """Create a team.
+
+        ``POST /iam/teams``
+
+        Args:
+          name: 1 to 64 characters, trimmed.
+          description: At most 255 characters.
+        """
+        return cast(
+            "IamTeam",
+            self._client.request(
+                "POST",
+                "/iam/teams",
+                query=merge_params({}, extra_query),
+                body=merge_params({"name": name, "description": description}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def get(
+        self,
+        team_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> IamTeam:
+        """Get a team.
+
+        ``GET /iam/teams/{team_id}``
+        """
+        return cast(
+            "IamTeam",
+            self._client.request(
+                "GET",
+                f"/iam/teams/{path_param(team_id)}",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def update(
+        self,
+        team_id: str,
+        *,
+        name: Union[str, NotGiven] = NOT_GIVEN,
+        description: Union[str, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> IamTeam:
+        """Rename a team.
+
+        ``PATCH /iam/teams/{team_id}``
+
+        Args:
+          name: A new name, 1 to 64 characters.
+          description: A new description, at most 255 characters.
+        """
+        return cast(
+            "IamTeam",
+            self._client.request(
+                "PATCH",
+                f"/iam/teams/{path_param(team_id)}",
+                query=merge_params({}, extra_query),
+                body=merge_params({"name": name, "description": description}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def delete(
+        self,
+        team_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> None:
+        """Delete a team.
+
+        ``DELETE /iam/teams/{team_id}``
+        """
+        self._client.request(
+            "DELETE",
+            f"/iam/teams/{path_param(team_id)}",
+            query=merge_params({}, extra_query),
+            idempotency_key=idempotency_key,
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+        return None
+
+
+class IamPoliciesAttachmentsResource(SyncResource):
+    """The members and teams a policy is attached to."""
+
+    def list(
+        self,
+        policy_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> IamAttachmentList:
+        """List a policy's attachments.
+
+        ``GET /iam/policies/{policy_id}/attachments``
+
+        Args:
+          policy_id: A policy id, `pol_…` or `pol_pantech_<name>`.
+        """
+        return cast(
+            "IamAttachmentList",
+            self._client.request(
+                "GET",
+                f"/iam/policies/{path_param(policy_id)}/attachments",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def attach(
+        self,
+        policy_id: str,
+        *,
+        principal_type: Literal["member", "team"],
+        principal_id: str,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> IamAttachment:
+        """Attach a policy.
+
+        ``POST /iam/policies/{policy_id}/attachments``
+
+        Args:
+          policy_id: A policy id, `pol_…` or `pol_pantech_<name>`.
+          principal_id: A member's user id or a team id.
+        """
+        return cast(
+            "IamAttachment",
+            self._client.request(
+                "POST",
+                f"/iam/policies/{path_param(policy_id)}/attachments",
+                query=merge_params({}, extra_query),
+                body=merge_params({"principal_type": principal_type, "principal_id": principal_id}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def detach(
+        self,
+        policy_id: str,
+        principal_type: str,
+        principal_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> None:
+        """Detach a policy.
+
+        ``DELETE /iam/policies/{policy_id}/attachments/{principal_type}/{principal_id}``
+
+        Args:
+          policy_id: A policy id, `pol_…` or `pol_pantech_<name>`.
+        """
+        self._client.request(
+            "DELETE",
+            f"/iam/policies/{path_param(policy_id)}/attachments/{path_param(principal_type)}/{path_param(principal_id)}",
+            query=merge_params({}, extra_query),
+            idempotency_key=idempotency_key,
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+        return None
+
+
+class IamPoliciesResource(SyncResource):
+    """Policies: statements that allow or deny actions on resources."""
+
+    attachments: IamPoliciesAttachmentsResource
+
+    def __init__(self, client: SyncAPIClient) -> None:
+        super().__init__(client)
+        self.attachments = IamPoliciesAttachmentsResource(client)
+
+    def list(
+        self,
+        *,
+        managed: Union[bool, NotGiven] = NOT_GIVEN,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        cursor: Union[str, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> IamPolicyList:
+        """List policies.
+
+        ``GET /iam/policies``
+
+        Args:
+          managed: `true` lists Pantech's managed policies only, `false` the organization's
+              only; omit it for both.
+          limit: Items per page, 1 to 100.
+          cursor: The previous page's `next_cursor`, to get the next page.
+        """
+        return cast(
+            "IamPolicyList",
+            self._client.request(
+                "GET",
+                "/iam/policies",
+                query=merge_params({"managed": managed, "limit": limit, "cursor": cursor}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list_all(
+        self,
+        *,
+        managed: Union[bool, NotGiven] = NOT_GIVEN,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Iterator[IamPolicy]:
+        """List policies, following ``next_cursor`` through every page.
+
+        ``GET /iam/policies``
+
+        Args:
+          managed: `true` lists Pantech's managed policies only, `false` the organization's
+              only; omit it for both.
+          limit: Items per page, 1 to 100.
+        """
+        return self._client._paginate(
+            "/iam/policies",
+            query=merge_params({"managed": managed, "limit": limit}, extra_query),
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+
+    def create(
+        self,
+        *,
+        name: str,
+        statements: List[IamStatement],
+        description: Union[str, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> IamPolicy:
+        """Create a policy.
+
+        ``POST /iam/policies``
+
+        Args:
+          name: 1 to 64 letters, digits, spaces, `.`, `_` or `-`, starting with a letter or
+              digit, unique in the organization.
+          description: At most 255 characters.
+        """
+        return cast(
+            "IamPolicy",
+            self._client.request(
+                "POST",
+                "/iam/policies",
+                query=merge_params({}, extra_query),
+                body=merge_params({"name": name, "description": description, "statements": statements}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def get(
+        self,
+        policy_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> IamPolicy:
+        """Get a policy.
+
+        ``GET /iam/policies/{policy_id}``
+
+        Args:
+          policy_id: A policy id, `pol_…` or `pol_pantech_<name>`.
+        """
+        return cast(
+            "IamPolicy",
+            self._client.request(
+                "GET",
+                f"/iam/policies/{path_param(policy_id)}",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def update(
+        self,
+        policy_id: str,
+        *,
+        name: str,
+        statements: List[IamStatement],
+        if_match: Union[int, NotGiven] = NOT_GIVEN,
+        description: Union[str, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> IamPolicy:
+        """Replace a policy.
+
+        ``PUT /iam/policies/{policy_id}``
+
+        Args:
+          policy_id: A policy id, `pol_…` or `pol_pantech_<name>`.
+          if_match: The version you read; the change is refused with `412 VERSION_CONFLICT`
+              if it is not the current one.
+          name: 1 to 64 letters, digits, spaces, `.`, `_` or `-`, starting with a letter or
+              digit, unique in the organization.
+          description: At most 255 characters.
+        """
+        return cast(
+            "IamPolicy",
+            self._client.request(
+                "PUT",
+                f"/iam/policies/{path_param(policy_id)}",
+                query=merge_params({}, extra_query),
+                body=merge_params({"name": name, "description": description, "statements": statements}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=merge_headers({"If-Match": if_match}, extra_headers),
+                timeout=timeout,
+            ),
+        )
+
+    def delete(
+        self,
+        policy_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> None:
+        """Delete a policy.
+
+        ``DELETE /iam/policies/{policy_id}``
+
+        Args:
+          policy_id: A policy id, `pol_…` or `pol_pantech_<name>`.
+        """
+        self._client.request(
+            "DELETE",
+            f"/iam/policies/{path_param(policy_id)}",
+            query=merge_params({}, extra_query),
+            idempotency_key=idempotency_key,
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+        return None
+
+
+class IamResource(SyncResource):
+    """Teams and access policies: who in your organization may do what, on which resources."""
+
+    members: IamMembersResource
+    actions: IamActionsResource
+    settings: IamSettingsResource
+    teams: IamTeamsResource
+    policies: IamPoliciesResource
+
+    def __init__(self, client: SyncAPIClient) -> None:
+        super().__init__(client)
+        self.members = IamMembersResource(client)
+        self.actions = IamActionsResource(client)
+        self.settings = IamSettingsResource(client)
+        self.teams = IamTeamsResource(client)
+        self.policies = IamPoliciesResource(client)
+
+    def effective_access(
+        self,
+        user_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> IamEffectiveAccess:
+        """Get a member's effective access.
+
+        ``GET /iam/members/{user_id}/effective-access``
+        """
+        return cast(
+            "IamEffectiveAccess",
+            self._client.request(
+                "GET",
+                f"/iam/members/{path_param(user_id)}/effective-access",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def simulate(
+        self,
+        *,
+        user_id: str,
+        action: str,
+        resource: Union[str, NotGiven] = NOT_GIVEN,
+        resource_name: Union[str, NotGiven] = NOT_GIVEN,
+        source_ip: Union[str, NotGiven] = NOT_GIVEN,
+        mfa: Union[bool, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> IamSimulation:
+        """Simulate an access decision.
+
+        ``POST /iam/simulate``
+
+        Args:
+          user_id: The member to simulate.
+          resource: A resource id, such as `vm_01jd…`.
+          resource_name: The resource's name, for `name:` patterns.
+          source_ip: The client address to simulate.
+          mfa: Whether the session signed in with MFA; false when omitted.
+        """
+        return cast(
+            "IamSimulation",
+            self._client.request(
+                "POST",
+                "/iam/simulate",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {
+                        "user_id": user_id,
+                        "action": action,
+                        "resource": resource,
+                        "resource_name": resource_name,
+                        "source_ip": source_ip,
+                        "mfa": mfa,
+                    },
+                    extra_body,
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+
+class RegistryNamespaceResource(SyncResource):
+    """Your organization's namespace, which every image name starts with."""
+
+    def get(
+        self,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> RegistryNamespace:
+        """Get the registry namespace.
+
+        ``GET /registry``
+        """
+        return cast(
+            "RegistryNamespace",
+            self._client.request(
+                "GET",
+                "/registry",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def set(
+        self,
+        *,
+        name: str,
+        create_on_push: Union[bool, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> RegistryNamespace:
+        """Claim or change the registry namespace.
+
+        ``PUT /registry``
+
+        Args:
+          name: 3 to 30 lower-case letters, digits and single hyphens, starting with a
+              letter.
+          create_on_push: Whether a push may create a repository.
+        """
+        return cast(
+            "RegistryNamespace",
+            self._client.request(
+                "PUT",
+                "/registry",
+                query=merge_params({}, extra_query),
+                body=merge_params({"name": name, "create_on_push": create_on_push}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+
+class RegistryRepositoriesResource(SyncResource):
+    """Repositories in your namespace: visibility, tag immutability and retention."""
+
+    def list(
+        self,
+        *,
+        q: Union[str, NotGiven] = NOT_GIVEN,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        cursor: Union[str, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> RegistryRepositoryList:
+        """List repositories.
+
+        ``GET /registry/repositories``
+
+        Args:
+          q: Only repositories whose name contains this text, at most 255 characters.
+          limit: Items per page, 1 to 100.
+          cursor: The previous page's `next_cursor`, to get the next page.
+        """
+        return cast(
+            "RegistryRepositoryList",
+            self._client.request(
+                "GET",
+                "/registry/repositories",
+                query=merge_params({"q": q, "limit": limit, "cursor": cursor}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list_all(
+        self,
+        *,
+        q: Union[str, NotGiven] = NOT_GIVEN,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Iterator[RegistryRepository]:
+        """List repositories, following ``next_cursor`` through every page.
+
+        ``GET /registry/repositories``
+
+        Args:
+          q: Only repositories whose name contains this text, at most 255 characters.
+          limit: Items per page, 1 to 100.
+        """
+        return self._client._paginate(
+            "/registry/repositories",
+            query=merge_params({"q": q, "limit": limit}, extra_query),
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+
+    def create(
+        self,
+        *,
+        name: str,
+        description: Union[str, NotGiven] = NOT_GIVEN,
+        visibility: Union[Literal["private", "public"], NotGiven] = NOT_GIVEN,
+        immutable_tags: Union[bool, NotGiven] = NOT_GIVEN,
+        retention: Union[RegistryRetentionInput, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> RegistryRepository:
+        """Create a repository.
+
+        ``POST /registry/repositories``
+
+        Args:
+          name: Lower-case path components separated by `/`, such as `api/server`.
+          visibility: Default `private`.
+          immutable_tags: Default false.
+        """
+        return cast(
+            "RegistryRepository",
+            self._client.request(
+                "POST",
+                "/registry/repositories",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {
+                        "name": name,
+                        "description": description,
+                        "visibility": visibility,
+                        "immutable_tags": immutable_tags,
+                        "retention": retention,
+                    },
+                    extra_body,
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def get(
+        self,
+        repository_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> RegistryRepository:
+        """Get a repository.
+
+        ``GET /registry/repositories/{repository_id}``
+
+        Args:
+          repository_id: The repository's id (`crr_…`).
+        """
+        return cast(
+            "RegistryRepository",
+            self._client.request(
+                "GET",
+                f"/registry/repositories/{path_param(repository_id)}",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def update(
+        self,
+        repository_id: str,
+        *,
+        description: Union[str, NotGiven] = NOT_GIVEN,
+        visibility: Union[Literal["private", "public"], NotGiven] = NOT_GIVEN,
+        immutable_tags: Union[bool, NotGiven] = NOT_GIVEN,
+        retention: Union[RegistryRetentionInput, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> RegistryRepository:
+        """Change a repository.
+
+        ``PATCH /registry/repositories/{repository_id}``
+
+        Args:
+          repository_id: The repository's id (`crr_…`).
+        """
+        return cast(
+            "RegistryRepository",
+            self._client.request(
+                "PATCH",
+                f"/registry/repositories/{path_param(repository_id)}",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {
+                        "description": description,
+                        "visibility": visibility,
+                        "immutable_tags": immutable_tags,
+                        "retention": retention,
+                    },
+                    extra_body,
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def delete(
+        self,
+        repository_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> RegistryRepository:
+        """Delete a repository.
+
+        ``DELETE /registry/repositories/{repository_id}``
+
+        Args:
+          repository_id: The repository's id (`crr_…`).
+        """
+        return cast(
+            "RegistryRepository",
+            self._client.request(
+                "DELETE",
+                f"/registry/repositories/{path_param(repository_id)}",
+                query=merge_params({}, extra_query),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+
+class RegistryTagsResource(SyncResource):
+    """Tags of a repository, and the images they point at."""
+
+    def list(
+        self,
+        repository_id: str,
+        *,
+        q: Union[str, NotGiven] = NOT_GIVEN,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        cursor: Union[str, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> RegistryTagList:
+        """List a repository's tags.
+
+        ``GET /registry/repositories/{repository_id}/tags``
+
+        Args:
+          repository_id: The repository's id (`crr_…`).
+          q: Only tags whose name contains this text, at most 255 characters.
+          limit: Items per page, 1 to 100.
+          cursor: The previous page's `next_cursor`, to get the next page.
+        """
+        return cast(
+            "RegistryTagList",
+            self._client.request(
+                "GET",
+                f"/registry/repositories/{path_param(repository_id)}/tags",
+                query=merge_params({"q": q, "limit": limit, "cursor": cursor}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list_all(
+        self,
+        repository_id: str,
+        *,
+        q: Union[str, NotGiven] = NOT_GIVEN,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Iterator[RegistryTag]:
+        """List a repository's tags, following ``next_cursor`` through every page.
+
+        ``GET /registry/repositories/{repository_id}/tags``
+
+        Args:
+          repository_id: The repository's id (`crr_…`).
+          q: Only tags whose name contains this text, at most 255 characters.
+          limit: Items per page, 1 to 100.
+        """
+        return self._client._paginate(
+            f"/registry/repositories/{path_param(repository_id)}/tags",
+            query=merge_params({"q": q, "limit": limit}, extra_query),
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+
+    def get(
+        self,
+        repository_id: str,
+        tag: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> RegistryTag:
+        """Get a tag.
+
+        ``GET /registry/repositories/{repository_id}/tags/{tag}``
+
+        Args:
+          repository_id: The repository's id (`crr_…`).
+          tag: The tag, such as `v1.4.2` or `latest`.
+        """
+        return cast(
+            "RegistryTag",
+            self._client.request(
+                "GET",
+                f"/registry/repositories/{path_param(repository_id)}/tags/{path_param(tag)}",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def delete(
+        self,
+        repository_id: str,
+        tag: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> None:
+        """Delete a tag.
+
+        ``DELETE /registry/repositories/{repository_id}/tags/{tag}``
+
+        Args:
+          repository_id: The repository's id (`crr_…`).
+          tag: The tag, such as `v1.4.2` or `latest`.
+        """
+        self._client.request(
+            "DELETE",
+            f"/registry/repositories/{path_param(repository_id)}/tags/{path_param(tag)}",
+            query=merge_params({}, extra_query),
+            idempotency_key=idempotency_key,
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+        return None
+
+
+class RegistryTokensResource(SyncResource):
+    """Registry-only credentials for CI and clusters: pull, or push, for some or every repository."""
+
+    def list(
+        self,
+        *,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        cursor: Union[str, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> RegistryTokenList:
+        """List registry tokens.
+
+        ``GET /registry/tokens``
+
+        Args:
+          limit: Items per page, 1 to 100.
+          cursor: The previous page's `next_cursor`, to get the next page.
+        """
+        return cast(
+            "RegistryTokenList",
+            self._client.request(
+                "GET",
+                "/registry/tokens",
+                query=merge_params({"limit": limit, "cursor": cursor}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list_all(
+        self,
+        *,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Iterator[RegistryToken]:
+        """List registry tokens, following ``next_cursor`` through every page.
+
+        ``GET /registry/tokens``
+
+        Args:
+          limit: Items per page, 1 to 100.
+        """
+        return self._client._paginate(
+            "/registry/tokens",
+            query=merge_params({"limit": limit}, extra_query),
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+
+    def create(
+        self,
+        *,
+        name: str,
+        permission: Literal["pull", "push"],
+        repositories: Union[List[str], NotGiven] = NOT_GIVEN,
+        expires_at: Union[str, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> RegistryTokenWithSecret:
+        """Create a registry token.
+
+        ``POST /registry/tokens``
+
+        Args:
+          repositories: Repository names in your namespace, such as `api/server`; left out
+              or empty for all of them.
+          expires_at: When it stops working (RFC 3339), at most 10 years away; left out for
+              never.
+        """
+        return cast(
+            "RegistryTokenWithSecret",
+            hide_secret(
+                self._client.request(
+                    "POST",
+                    "/registry/tokens",
+                    query=merge_params({}, extra_query),
+                    body=merge_params(
+                        {
+                            "name": name,
+                            "permission": permission,
+                            "repositories": repositories,
+                            "expires_at": expires_at,
+                        },
+                        extra_body,
+                    ),
+                    idempotency_key=idempotency_key,
+                    extra_headers=extra_headers,
+                    timeout=timeout,
+                )
+            ),
+        )
+
+    def delete(
+        self,
+        token_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> None:
+        """Revoke a registry token.
+
+        ``DELETE /registry/tokens/{token_id}``
+
+        Args:
+          token_id: The registry token's id (`prt_…`).
+        """
+        self._client.request(
+            "DELETE",
+            f"/registry/tokens/{path_param(token_id)}",
+            query=merge_params({}, extra_query),
+            idempotency_key=idempotency_key,
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+        return None
+
+
+class RegistryResource(SyncResource):
+    """Pantech Container Registry: a private OCI registry for your images, at registry.pantechdynamics.com."""
+
+    namespace: RegistryNamespaceResource
+    repositories: RegistryRepositoriesResource
+    tags: RegistryTagsResource
+    tokens: RegistryTokensResource
+
+    def __init__(self, client: SyncAPIClient) -> None:
+        super().__init__(client)
+        self.namespace = RegistryNamespaceResource(client)
+        self.repositories = RegistryRepositoriesResource(client)
+        self.tags = RegistryTagsResource(client)
+        self.tokens = RegistryTokensResource(client)
+
+
+class DnsZonesResource(DNSZoneWaiter):
+    """Hosted zones: create one, delegate your domain to its two name servers, import and export zones."""
+
+    def list(
+        self,
+        *,
+        q: Union[str, NotGiven] = NOT_GIVEN,
+        status: Union[
+            Literal["pending", "awaiting_delegation", "active", "suspended", "deleting", "deleted", "failed"], NotGiven
+        ] = NOT_GIVEN,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        cursor: Union[str, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DNSZoneList:
+        """List DNS zones.
+
+        ``GET /dns/zones``
+
+        Args:
+          q: Only zones whose name contains this text (case-insensitive), at most 255
+              characters.
+          status: Only zones in this status.
+          limit: Items per page, 1 to 100.
+          cursor: The previous page's `next_cursor`, to get the next page.
+        """
+        return cast(
+            "DNSZoneList",
+            self._client.request(
+                "GET",
+                "/dns/zones",
+                query=merge_params({"q": q, "status": status, "limit": limit, "cursor": cursor}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list_all(
+        self,
+        *,
+        q: Union[str, NotGiven] = NOT_GIVEN,
+        status: Union[
+            Literal["pending", "awaiting_delegation", "active", "suspended", "deleting", "deleted", "failed"], NotGiven
+        ] = NOT_GIVEN,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Iterator[DNSZone]:
+        """List DNS zones, following ``next_cursor`` through every page.
+
+        ``GET /dns/zones``
+
+        Args:
+          q: Only zones whose name contains this text (case-insensitive), at most 255
+              characters.
+          status: Only zones in this status.
+          limit: Items per page, 1 to 100.
+        """
+        return self._client._paginate(
+            "/dns/zones",
+            query=merge_params({"q": q, "status": status, "limit": limit}, extra_query),
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+
+    def create(
+        self,
+        *,
+        name: str,
+        description: Union[str, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DNSZone:
+        """Create a DNS zone.
+
+        ``POST /dns/zones``
+
+        Args:
+          name: A domain you own or a subdomain of one, at most 253 characters.
+          description: A note for yourself, at most 255 characters.
+        """
+        return cast(
+            "DNSZone",
+            self._client.request(
+                "POST",
+                "/dns/zones",
+                query=merge_params({}, extra_query),
+                body=merge_params({"name": name, "description": description}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def quote(
+        self,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DNSZoneQuote:
+        """Price DNS zones.
+
+        ``GET /dns/zones/quote``
+        """
+        return cast(
+            "DNSZoneQuote",
+            self._client.request(
+                "GET",
+                "/dns/zones/quote",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def get(
+        self,
+        zone_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DNSZone:
+        """Get a DNS zone.
+
+        ``GET /dns/zones/{zone_id}``
+
+        Args:
+          zone_id: The zone's id (`dnsz_…`).
+        """
+        return cast(
+            "DNSZone",
+            self._client.request(
+                "GET",
+                f"/dns/zones/{path_param(zone_id)}",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def update(
+        self,
+        zone_id: str,
+        *,
+        description: Union[str, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DNSZone:
+        """Change a DNS zone.
+
+        ``PATCH /dns/zones/{zone_id}``
+
+        Args:
+          zone_id: The zone's id (`dnsz_…`).
+          description: A new note, at most 255 characters.
+        """
+        return cast(
+            "DNSZone",
+            self._client.request(
+                "PATCH",
+                f"/dns/zones/{path_param(zone_id)}",
+                query=merge_params({}, extra_query),
+                body=merge_params({"description": description}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def delete(
+        self,
+        zone_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DNSZone:
+        """Delete a DNS zone.
+
+        ``DELETE /dns/zones/{zone_id}``
+
+        Args:
+          zone_id: The zone's id (`dnsz_…`).
+        """
+        return cast(
+            "DNSZone",
+            self._client.request(
+                "DELETE",
+                f"/dns/zones/{path_param(zone_id)}",
+                query=merge_params({}, extra_query),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def verify(
+        self,
+        zone_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DNSZone:
+        """Check a zone's delegation now.
+
+        ``POST /dns/zones/{zone_id}/verify``
+
+        Args:
+          zone_id: The zone's id (`dnsz_…`).
+        """
+        return cast(
+            "DNSZone",
+            self._client.request(
+                "POST",
+                f"/dns/zones/{path_param(zone_id)}/verify",
+                query=merge_params({}, extra_query),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def export_zone_file(
+        self,
+        zone_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> str:
+        """Export a zone file.
+
+        ``GET /dns/zones/{zone_id}/export``
+
+        Args:
+          zone_id: The zone's id (`dnsz_…`).
+        """
+        return cast(
+            "str",
+            self._client.request(
+                "GET",
+                f"/dns/zones/{path_param(zone_id)}/export",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+                parse_as="text",
+            ),
+        )
+
+    def import_zone_file(
+        self,
+        zone_id: str,
+        *,
+        zone_file: str,
+        replace: Union[bool, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DNSRecordBatchResult:
+        """Import a zone file.
+
+        ``POST /dns/zones/{zone_id}/import``
+
+        Args:
+          zone_id: The zone's id (`dnsz_…`).
+          zone_file: A BIND zone file, at most 2 MiB.
+          replace: Also delete record sets that are not in the file.
+        """
+        return cast(
+            "DNSRecordBatchResult",
+            self._client.request(
+                "POST",
+                f"/dns/zones/{path_param(zone_id)}/import",
+                query=merge_params({}, extra_query),
+                body=merge_params({"zone_file": zone_file, "replace": replace}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+
+class DnsRecordsResource(DNSRecordWaiter):
+    """Record sets of a zone: one name and type each, with a TTL and values."""
+
+    def list(
+        self,
+        zone_id: str,
+        *,
+        name: Union[str, NotGiven] = NOT_GIVEN,
+        q: Union[str, NotGiven] = NOT_GIVEN,
+        type: Union[Literal["A", "AAAA", "CNAME", "MX", "TXT", "SRV", "CAA", "NS", "PTR", "SOA"], NotGiven] = NOT_GIVEN,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        cursor: Union[str, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DNSRecordList:
+        """List a zone's records.
+
+        ``GET /dns/zones/{zone_id}/records``
+
+        Args:
+          zone_id: The zone's id (`dnsz_…`).
+          name: Only the record sets at this name, relative to the zone (`@`, `www`,
+              `*.dev`).
+          q: Only record sets whose name contains this text (case-insensitive), at most 255
+              characters.
+          type: Only record sets of this type (case-insensitive).
+          limit: Items per page, 1 to 100.
+          cursor: The previous page's `next_cursor`, to get the next page.
+        """
+        return cast(
+            "DNSRecordList",
+            self._client.request(
+                "GET",
+                f"/dns/zones/{path_param(zone_id)}/records",
+                query=merge_params({"name": name, "q": q, "type": type, "limit": limit, "cursor": cursor}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list_all(
+        self,
+        zone_id: str,
+        *,
+        name: Union[str, NotGiven] = NOT_GIVEN,
+        q: Union[str, NotGiven] = NOT_GIVEN,
+        type: Union[Literal["A", "AAAA", "CNAME", "MX", "TXT", "SRV", "CAA", "NS", "PTR", "SOA"], NotGiven] = NOT_GIVEN,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Iterator[DNSRecord]:
+        """List a zone's records, following ``next_cursor`` through every page.
+
+        ``GET /dns/zones/{zone_id}/records``
+
+        Args:
+          zone_id: The zone's id (`dnsz_…`).
+          name: Only the record sets at this name, relative to the zone (`@`, `www`,
+              `*.dev`).
+          q: Only record sets whose name contains this text (case-insensitive), at most 255
+              characters.
+          type: Only record sets of this type (case-insensitive).
+          limit: Items per page, 1 to 100.
+        """
+        return self._client._paginate(
+            f"/dns/zones/{path_param(zone_id)}/records",
+            query=merge_params({"name": name, "q": q, "type": type, "limit": limit}, extra_query),
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+
+    def create(
+        self,
+        zone_id: str,
+        *,
+        name: str,
+        type: Literal["A", "AAAA", "CNAME", "MX", "TXT", "SRV", "CAA", "NS", "PTR"],
+        values: List[str],
+        ttl: Union[int, NotGiven] = NOT_GIVEN,
+        allow_private: Union[bool, NotGiven] = NOT_GIVEN,
+        comment: Union[str, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DNSRecord:
+        """Create a record set.
+
+        ``POST /dns/zones/{zone_id}/records``
+
+        Args:
+          zone_id: The zone's id (`dnsz_…`).
+          name: Relative to the zone (`@`, `www`, `*.dev`, `_dmarc`), or fully qualified
+              ending in the zone.
+          ttl: Seconds, 60 to 86400.
+          values: 1 to 100 values in the type's format.
+          allow_private: Allow private and carrier-grade NAT addresses (for names that
+              resolve inside a private network).
+          comment: A note for yourself, at most 255 characters.
+        """
+        return cast(
+            "DNSRecord",
+            self._client.request(
+                "POST",
+                f"/dns/zones/{path_param(zone_id)}/records",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {
+                        "name": name,
+                        "type": type,
+                        "ttl": ttl,
+                        "values": values,
+                        "allow_private": allow_private,
+                        "comment": comment,
+                    },
+                    extra_body,
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def get(
+        self,
+        zone_id: str,
+        record_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DNSRecord:
+        """Get a record set.
+
+        ``GET /dns/zones/{zone_id}/records/{record_id}``
+
+        Args:
+          zone_id: The zone's id (`dnsz_…`).
+          record_id: The record set's id (`dnsr_…`).
+        """
+        return cast(
+            "DNSRecord",
+            self._client.request(
+                "GET",
+                f"/dns/zones/{path_param(zone_id)}/records/{path_param(record_id)}",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def update(
+        self,
+        zone_id: str,
+        record_id: str,
+        *,
+        if_match: Union[int, NotGiven] = NOT_GIVEN,
+        ttl: Union[int, NotGiven] = NOT_GIVEN,
+        values: Union[List[str], NotGiven] = NOT_GIVEN,
+        allow_private: Union[bool, NotGiven] = NOT_GIVEN,
+        comment: Union[str, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DNSRecord:
+        """Change a record set.
+
+        ``PATCH /dns/zones/{zone_id}/records/{record_id}``
+
+        Args:
+          zone_id: The zone's id (`dnsz_…`).
+          record_id: The record set's id (`dnsr_…`).
+          if_match: The record's `version`.
+          ttl: A new TTL in seconds.
+          values: The new values, replacing every old one.
+          comment: A new note, at most 255 characters.
+        """
+        return cast(
+            "DNSRecord",
+            self._client.request(
+                "PATCH",
+                f"/dns/zones/{path_param(zone_id)}/records/{path_param(record_id)}",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {"ttl": ttl, "values": values, "allow_private": allow_private, "comment": comment}, extra_body
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=merge_headers({"If-Match": if_match}, extra_headers),
+                timeout=timeout,
+            ),
+        )
+
+    def delete(
+        self,
+        zone_id: str,
+        record_id: str,
+        *,
+        if_match: Union[int, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DNSRecord:
+        """Delete a record set.
+
+        ``DELETE /dns/zones/{zone_id}/records/{record_id}``
+
+        Args:
+          zone_id: The zone's id (`dnsz_…`).
+          record_id: The record set's id (`dnsr_…`).
+          if_match: The record's `version`.
+        """
+        return cast(
+            "DNSRecord",
+            self._client.request(
+                "DELETE",
+                f"/dns/zones/{path_param(zone_id)}/records/{path_param(record_id)}",
+                query=merge_params({}, extra_query),
+                idempotency_key=idempotency_key,
+                extra_headers=merge_headers({"If-Match": if_match}, extra_headers),
+                timeout=timeout,
+            ),
+        )
+
+    def batch(
+        self,
+        zone_id: str,
+        *,
+        changes: List[DNSRecordChange],
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DNSRecordBatchResult:
+        """Change many record sets at once.
+
+        ``POST /dns/zones/{zone_id}/records/batch``
+
+        Args:
+          zone_id: The zone's id (`dnsz_…`).
+          changes: 1 to 1,000 changes, applied in order, all or nothing.
+        """
+        return cast(
+            "DNSRecordBatchResult",
+            self._client.request(
+                "POST",
+                f"/dns/zones/{path_param(zone_id)}/records/batch",
+                query=merge_params({}, extra_query),
+                body=merge_params({"changes": changes}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+
+class DnsResource(SyncResource):
+    """Pantech DNS: hosted zones and their records, on Pantech's own name servers."""
+
+    zones: DnsZonesResource
+    records: DnsRecordsResource
+
+    def __init__(self, client: SyncAPIClient) -> None:
+        super().__init__(client)
+        self.zones = DnsZonesResource(client)
+        self.records = DnsRecordsResource(client)
+
+
+class DomainsOrdersResource(SyncResource):
+    """Registrations, renewals and transfers, paid from your credit."""
+
+    def list(
+        self,
+        domain_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DomainOrderList:
+        """List a domain's orders.
+
+        ``GET /domains/{domain_id}/orders``
+
+        Args:
+          domain_id: The domain's id (`dom_…`).
+        """
+        return cast(
+            "DomainOrderList",
+            self._client.request(
+                "GET",
+                f"/domains/{path_param(domain_id)}/orders",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list_all(
+        self,
+        domain_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Iterator[DomainOrder]:
+        """List a domain's orders, following ``next_cursor`` through every page.
+
+        ``GET /domains/{domain_id}/orders``
+
+        Args:
+          domain_id: The domain's id (`dom_…`).
+        """
+        return self._client._paginate(
+            f"/domains/{path_param(domain_id)}/orders",
+            query=merge_params({}, extra_query),
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+
+    def get(
+        self,
+        order_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DomainOrder:
+        """Get a domain order.
+
+        ``GET /domain-orders/{order_id}``
+
+        Args:
+          order_id: The domain order's id (`dor_…`).
+        """
+        return cast(
+            "DomainOrder",
+            self._client.request(
+                "GET",
+                f"/domain-orders/{path_param(order_id)}",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def retry_payment(
+        self,
+        order_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DomainOrder:
+        """Retry a domain order's payment.
+
+        ``POST /domain-orders/{order_id}/retry-payment``
+
+        Args:
+          order_id: The domain order's id (`dor_…`).
+        """
+        return cast(
+            "DomainOrder",
+            self._client.request(
+                "POST",
+                f"/domain-orders/{path_param(order_id)}/retry-payment",
+                query=merge_params({}, extra_query),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+
+class DomainsResource(DomainOrderWaiter):
+    """Domains: search, register, transfer in, renew, and manage name servers, contact and lock."""
+
+    orders: DomainsOrdersResource
+
+    def __init__(self, client: SyncAPIClient) -> None:
+        super().__init__(client)
+        self.orders = DomainsOrdersResource(client)
+
+    def list_tlds(
+        self,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> TLDOfferList:
+        """List TLDs on sale.
+
+        ``GET /domains/tlds``
+        """
+        return cast(
+            "TLDOfferList",
+            self._client.request(
+                "GET",
+                "/domains/tlds",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list_all_tlds(
+        self,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Iterator[TLDOffer]:
+        """List TLDs on sale, following ``next_cursor`` through every page.
+
+        ``GET /domains/tlds``
+        """
+        return self._client._paginate(
+            "/domains/tlds", query=merge_params({}, extra_query), extra_headers=extra_headers, timeout=timeout
+        )
+
+    def search(
+        self,
+        *,
+        query: str,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DomainSearchResultList:
+        """Search for a domain.
+
+        ``GET /domains/search``
+
+        Args:
+          query: A name such as `example` or `example.com`; an internationalised name is
+              accepted.
+        """
+        return cast(
+            "DomainSearchResultList",
+            self._client.request(
+                "GET",
+                "/domains/search",
+                query=merge_params({"query": query}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def search_all(
+        self,
+        *,
+        query: str,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Iterator[DomainSearchResult]:
+        """Search for a domain, following ``next_cursor`` through every page.
+
+        ``GET /domains/search``
+
+        Args:
+          query: A name such as `example` or `example.com`; an internationalised name is
+              accepted.
+        """
+        return self._client._paginate(
+            "/domains/search",
+            query=merge_params({"query": query}, extra_query),
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+
+    def check_transfer(
+        self,
+        *,
+        name: str,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DomainTransferCheck:
+        """Check a domain can be transferred in.
+
+        ``GET /domains/transfer-check``
+
+        Args:
+          name: The domain, such as `example.com`.
+        """
+        return cast(
+            "DomainTransferCheck",
+            self._client.request(
+                "GET",
+                "/domains/transfer-check",
+                query=merge_params({"name": name}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list(
+        self,
+        *,
+        q: Union[str, NotGiven] = NOT_GIVEN,
+        status: Union[
+            Literal[
+                "pending", "registering", "transferring", "active", "expired", "failed", "transferred_out", "suspended"
+            ],
+            NotGiven,
+        ] = NOT_GIVEN,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        cursor: Union[str, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DomainList:
+        """List domains.
+
+        ``GET /domains``
+
+        Args:
+          q: Only domains whose name contains this text (case-insensitive), at most 255
+              characters.
+          status: Only domains in this status.
+          limit: Items per page, 1 to 100.
+          cursor: The previous page's `next_cursor`, to get the next page.
+        """
+        return cast(
+            "DomainList",
+            self._client.request(
+                "GET",
+                "/domains",
+                query=merge_params({"q": q, "status": status, "limit": limit, "cursor": cursor}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list_all(
+        self,
+        *,
+        q: Union[str, NotGiven] = NOT_GIVEN,
+        status: Union[
+            Literal[
+                "pending", "registering", "transferring", "active", "expired", "failed", "transferred_out", "suspended"
+            ],
+            NotGiven,
+        ] = NOT_GIVEN,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Iterator[Domain]:
+        """List domains, following ``next_cursor`` through every page.
+
+        ``GET /domains``
+
+        Args:
+          q: Only domains whose name contains this text (case-insensitive), at most 255
+              characters.
+          status: Only domains in this status.
+          limit: Items per page, 1 to 100.
+        """
+        return self._client._paginate(
+            "/domains",
+            query=merge_params({"q": q, "status": status, "limit": limit}, extra_query),
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+
+    def register(
+        self,
+        *,
+        name: str,
+        contact: DomainContact,
+        accept_terms: bool,
+        years: Union[int, NotGiven] = NOT_GIVEN,
+        auto_renew: Union[bool, NotGiven] = NOT_GIVEN,
+        privacy: Union[bool, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DomainWithOrder:
+        """Register a domain.
+
+        ``POST /domains``
+
+        Args:
+          auto_renew: Defaults to false.
+          privacy: Defaults to true.
+          accept_terms: Must be true: the registrant accepted the registration agreement.
+        """
+        return cast(
+            "DomainWithOrder",
+            self._client.request(
+                "POST",
+                "/domains",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {
+                        "name": name,
+                        "years": years,
+                        "contact": contact,
+                        "auto_renew": auto_renew,
+                        "privacy": privacy,
+                        "accept_terms": accept_terms,
+                    },
+                    extra_body,
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def transfer(
+        self,
+        *,
+        name: str,
+        auth_code: str,
+        contact: DomainContact,
+        accept_terms: bool,
+        years: Union[int, NotGiven] = NOT_GIVEN,
+        auto_renew: Union[bool, NotGiven] = NOT_GIVEN,
+        privacy: Union[bool, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DomainWithOrder:
+        """Transfer a domain in.
+
+        ``POST /domains/transfers``
+
+        Args:
+          auth_code: The code from the current registrar.
+          privacy: Defaults to true.
+        """
+        return cast(
+            "DomainWithOrder",
+            self._client.request(
+                "POST",
+                "/domains/transfers",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {
+                        "name": name,
+                        "auth_code": auth_code,
+                        "years": years,
+                        "contact": contact,
+                        "auto_renew": auto_renew,
+                        "privacy": privacy,
+                        "accept_terms": accept_terms,
+                    },
+                    extra_body,
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def get(
+        self,
+        domain_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Domain:
+        """Get a domain.
+
+        ``GET /domains/{domain_id}``
+
+        Args:
+          domain_id: The domain's id (`dom_…`).
+        """
+        return cast(
+            "Domain",
+            self._client.request(
+                "GET",
+                f"/domains/{path_param(domain_id)}",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def update(
+        self,
+        domain_id: str,
+        *,
+        auto_renew: Union[bool, NotGiven] = NOT_GIVEN,
+        transfer_lock: Union[bool, NotGiven] = NOT_GIVEN,
+        privacy: Union[bool, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Domain:
+        """Change a domain's settings.
+
+        ``PATCH /domains/{domain_id}``
+
+        Args:
+          domain_id: The domain's id (`dom_…`).
+        """
+        return cast(
+            "Domain",
+            self._client.request(
+                "PATCH",
+                f"/domains/{path_param(domain_id)}",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {"auto_renew": auto_renew, "transfer_lock": transfer_lock, "privacy": privacy}, extra_body
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def set_name_servers(
+        self,
+        domain_id: str,
+        *,
+        use_pantech_dns: bool,
+        zone_id: Union[str, NotGiven] = NOT_GIVEN,
+        name_servers: Union[List[str], NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Domain:
+        """Set a domain's name servers.
+
+        ``PUT /domains/{domain_id}/name-servers``
+
+        Args:
+          domain_id: The domain's id (`dom_…`).
+          zone_id: With `use_pantech_dns`, the zone to delegate to (`dnsz_…`); defaults to
+              your zone with the domain's name.
+          name_servers: Without `use_pantech_dns`, 2 to 6 host names.
+        """
+        return cast(
+            "Domain",
+            self._client.request(
+                "PUT",
+                f"/domains/{path_param(domain_id)}/name-servers",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {"use_pantech_dns": use_pantech_dns, "zone_id": zone_id, "name_servers": name_servers}, extra_body
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def get_contact(
+        self,
+        domain_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DomainContact:
+        """Get a domain's registrant contact.
+
+        ``GET /domains/{domain_id}/contact``
+
+        Args:
+          domain_id: The domain's id (`dom_…`).
+        """
+        return cast(
+            "DomainContact",
+            self._client.request(
+                "GET",
+                f"/domains/{path_param(domain_id)}/contact",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def update_contact(
+        self,
+        domain_id: str,
+        *,
+        contact: DomainContact,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Domain:
+        """Change a domain's registrant contact.
+
+        ``PUT /domains/{domain_id}/contact``
+
+        Args:
+          domain_id: The domain's id (`dom_…`).
+        """
+        return cast(
+            "Domain",
+            self._client.request(
+                "PUT",
+                f"/domains/{path_param(domain_id)}/contact",
+                query=merge_params({}, extra_query),
+                body=merge_params({"contact": contact}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def renew(
+        self,
+        domain_id: str,
+        *,
+        years: Union[int, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DomainWithOrder:
+        """Renew a domain.
+
+        ``POST /domains/{domain_id}/renew``
+
+        Args:
+          domain_id: The domain's id (`dom_…`).
+        """
+        return cast(
+            "DomainWithOrder",
+            self._client.request(
+                "POST",
+                f"/domains/{path_param(domain_id)}/renew",
+                query=merge_params({}, extra_query),
+                body=merge_params({"years": years}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def request_auth_code(
+        self,
+        domain_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Domain:
+        """Ask for a domain's auth code.
+
+        ``POST /domains/{domain_id}/auth-code``
+
+        Args:
+          domain_id: The domain's id (`dom_…`).
+        """
+        return cast(
+            "Domain",
+            self._client.request(
+                "POST",
+                f"/domains/{path_param(domain_id)}/auth-code",
+                query=merge_params({}, extra_query),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def get_auth_code(
+        self,
+        domain_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Union[DomainAuthCode, DomainAuthCodePending]:
+        """Get a domain's auth code.
+
+        ``GET /domains/{domain_id}/auth-code``
+
+        Args:
+          domain_id: The domain's id (`dom_…`).
+        """
+        return cast(
+            "Union[DomainAuthCode, DomainAuthCodePending]",
+            self._client.request(
+                "GET",
+                f"/domains/{path_param(domain_id)}/auth-code",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+
 class OperationsResource(OperationsWaiter):
     """Follow asynchronous changes."""
 
@@ -6561,6 +9532,11 @@ class Resources:
     ssh_keys: SshKeysResource
     webhooks: WebhooksResource
     migrate: MigrateResource
+    certificates: CertificatesResource
+    iam: IamResource
+    registry: RegistryResource
+    dns: DnsResource
+    domains: DomainsResource
     operations: OperationsResource
 
     def _init_resources(self, client: SyncAPIClient) -> None:
@@ -6580,4 +9556,9 @@ class Resources:
         self.ssh_keys = SshKeysResource(client)
         self.webhooks = WebhooksResource(client)
         self.migrate = MigrateResource(client)
+        self.certificates = CertificatesResource(client)
+        self.iam = IamResource(client)
+        self.registry = RegistryResource(client)
+        self.dns = DnsResource(client)
+        self.domains = DomainsResource(client)
         self.operations = OperationsResource(client)
