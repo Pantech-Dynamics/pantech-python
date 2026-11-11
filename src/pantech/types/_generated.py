@@ -10,8 +10,13 @@ __all__ = [
     "ApplyKubernetesManifestBody",
     "ApplyKubernetesManifestResponse",
     "ApplyKubernetesManifestResponseResourcesItem",
+    "AttachIamPolicyRequest",
     "AttachPublicIPRequest",
     "AttachVolumeRequest",
+    "Certificate",
+    "CertificateList",
+    "CertificateUsage",
+    "CertificateValidation",
     "ChangeDatabasePasswordRequest",
     "ChangeSSHKeyRequest",
     "ChangeSecurityGroupRequest",
@@ -40,8 +45,11 @@ __all__ = [
     "ConfigureKubernetesEndpointAccessRequest",
     "CreateCloudConnectionRequest",
     "CreateCreditPurchaseRequest",
+    "CreateDNSRecordRequest",
+    "CreateDNSZoneRequest",
     "CreateDatabaseRequest",
     "CreateFirewallRuleRequest",
+    "CreateIamTeamRequest",
     "CreateInstanceRequest",
     "CreateKubernetesClusterRequest",
     "CreateKubernetesNodePoolRequest",
@@ -50,6 +58,8 @@ __all__ = [
     "CreateNetworkRequest",
     "CreatePortForwardingRuleRequest",
     "CreatePublicIPRequest",
+    "CreateRegistryRepositoryRequest",
+    "CreateRegistryTokenRequest",
     "CreateSSHKeyRequest",
     "CreateSecurityGroupRequest",
     "CreateSnapshotRequest",
@@ -59,6 +69,15 @@ __all__ = [
     "CreditOutlook",
     "CreditPurchase",
     "CreditPurchaseReceipt",
+    "DNSRecord",
+    "DNSRecordBatchRequest",
+    "DNSRecordBatchResult",
+    "DNSRecordChange",
+    "DNSRecordChangeRecord",
+    "DNSRecordList",
+    "DNSZone",
+    "DNSZoneList",
+    "DNSZoneQuote",
     "Database",
     "DatabaseAccessRule",
     "DatabaseAccessRuleRequest",
@@ -75,6 +94,20 @@ __all__ = [
     "DatabasePasswordAccepted",
     "DiskOffering",
     "DiskOfferingList",
+    "Domain",
+    "DomainAuthCode",
+    "DomainAuthCodePending",
+    "DomainContact",
+    "DomainList",
+    "DomainOrder",
+    "DomainOrderList",
+    "DomainSearchResult",
+    "DomainSearchResultList",
+    "DomainSearchResultPrice",
+    "DomainTransferCheck",
+    "DomainTransferCheckPrice",
+    "DomainWithOrder",
+    "ExportedCertificate",
     "ExposeKubernetesServiceBody",
     "ExposeKubernetesServiceResponse",
     "Failure",
@@ -87,8 +120,30 @@ __all__ = [
     "GetKubernetesWorkloadsResponsePodsItem",
     "GetKubernetesWorkloadsResponseServicesItem",
     "GetKubernetesWorkloadsResponseServicesItemPortsItem",
+    "IamAction",
+    "IamActionList",
+    "IamAttachment",
+    "IamAttachmentList",
+    "IamEffectiveAccess",
+    "IamEffectivePolicy",
+    "IamMember",
+    "IamMemberList",
+    "IamPolicy",
+    "IamPolicyList",
+    "IamPolicyRequest",
+    "IamSettings",
+    "IamSimulation",
+    "IamSimulationRequest",
+    "IamStatement",
+    "IamStatementConditions",
+    "IamTeam",
+    "IamTeamList",
+    "IamTeamMember",
+    "IamTeamMemberList",
     "Image",
     "ImageList",
+    "ImportCertificateRequest",
+    "ImportDNSZoneRequest",
     "Instance",
     "InstanceList",
     "InstanceOrder",
@@ -115,6 +170,7 @@ __all__ = [
     "LoadBalancerMember",
     "Me",
     "MeApiKey",
+    "MeApiKeyKeyPolicy",
     "MetricsSeries",
     "MetricsSeriesPointsItem",
     "Migration",
@@ -161,16 +217,31 @@ __all__ = [
     "Region",
     "RegionList",
     "RegionPlacementsItem",
+    "RegisterDomainRequest",
+    "RegistryNamespace",
+    "RegistryRepository",
+    "RegistryRepositoryList",
+    "RegistryRetention",
+    "RegistryRetentionInput",
+    "RegistryTag",
+    "RegistryTagList",
+    "RegistryToken",
+    "RegistryTokenList",
+    "RegistryTokenWithSecret",
+    "ReimportCertificateRequest",
     "RenameMigrationRequest",
     "RenameRequest",
+    "RenewDomainRequest",
     "ReplaceDatabaseAccessRulesRequest",
     "ReplaceSecurityGroupRulesRequest",
+    "RequestCertificateRequest",
     "ResizeDatabaseStorageRequest",
     "ResizeKubernetesClusterPlanRequest",
     "ResizeRequest",
     "ResizeVolumeRequest",
     "RestoreRequest",
     "RestoreSnapshotRequest",
+    "RevokeCertificateRequest",
     "SSHAccessGrant",
     "SSHKey",
     "SSHKeyList",
@@ -179,6 +250,8 @@ __all__ = [
     "SecurityGroupList",
     "SecurityGroupRule",
     "SetDatabaseSecurityGroupsRequest",
+    "SetDomainNameServersRequest",
+    "SetRegistryNamespaceRequest",
     "Snapshot",
     "SnapshotList",
     "SnapshotSchedule",
@@ -186,11 +259,22 @@ __all__ = [
     "SubnetList",
     "SyncKubernetesRoutingResponse",
     "SyncKubernetesRoutingResponseSyncedPortsItem",
+    "TLDOffer",
+    "TLDOfferList",
     "ToggleKubernetesAddonRequest",
+    "TransferDomainRequest",
+    "UpdateCertificateRequest",
     "UpdateCloudConnectionRequest",
+    "UpdateDNSRecordRequest",
+    "UpdateDNSZoneRequest",
+    "UpdateDomainContactRequest",
+    "UpdateDomainRequest",
+    "UpdateIamSettingsRequest",
+    "UpdateIamTeamRequest",
     "UpdateKubernetesClusterRequest",
     "UpdateLoadBalancerRequest",
     "UpdateMigrationItemRequest",
+    "UpdateRegistryRepositoryRequest",
     "UpdateWebhookRequest",
     "UpgradeKubernetesClusterRequest",
     "UpgradeKubernetesNetworkRequest",
@@ -213,6 +297,192 @@ __all__ = [
     "WebhookList",
     "WebhookWithSecret",
 ]
+
+
+class RegistryNamespace(TypedDict):
+    """An organization's namespace on the private container registry."""
+
+    # The namespace: the first part of every image name.
+    name: str
+    # The registry's host name.
+    registry_host: str
+    # Whether a push to a repository that does not exist creates it.
+    create_on_push: bool
+    # Repositories in the namespace.
+    repository_count: int
+    # Storage your images use, in bytes, measured hourly: each layer counted once however many
+    # images share it.
+    storage_bytes: int
+    # The storage limit; pushes are refused at it.
+    storage_limit_bytes: int
+    # How many repositories the organization may have.
+    repository_limit: int
+    # When it was claimed (RFC 3339, UTC).
+    created_at: str
+    # When it last changed (RFC 3339, UTC).
+    updated_at: str
+    # Increases with every change.
+    version: int
+
+
+class _SetRegistryNamespaceRequestRequired(TypedDict):
+    # 3 to 30 lower-case letters, digits and single hyphens, starting with a letter.
+    name: str
+
+
+class SetRegistryNamespaceRequest(_SetRegistryNamespaceRequestRequired, total=False):
+    # Whether a push may create a repository.
+    create_on_push: bool
+
+
+class RegistryRetention(TypedDict):
+    """A retention policy. Each rule is null when off."""
+
+    # Keep the newest N tags (by push time) that `keep_pattern` does not protect; older ones are
+    # untagged daily.
+    keep_last: Optional[int]
+    # Delete images no tag points at once they are older than this many days.
+    untagged_after_days: Optional[int]
+    # A glob, such as `v*` or `release-*`: matching tags are never removed by retention.
+    keep_pattern: Optional[str]
+
+
+class RegistryRetentionInput(TypedDict, total=False):
+    """A retention policy. A rule left out or null is off."""
+
+    # Keep the newest N tags.
+    keep_last: Optional[int]
+    # Delete untagged images older than this many days.
+    untagged_after_days: Optional[int]
+    # Tags matching this glob are never removed.
+    keep_pattern: Optional[str]
+
+
+class RegistryRepository(TypedDict):
+    """A repository in the private container registry."""
+
+    # e.g. `crr_...`.
+    id: str
+    namespace: str
+    # The repository's name inside the namespace.
+    name: str
+    # The image name to push and pull, without a tag.
+    full_name: str
+    # Your note about it; may be empty.
+    description: str
+    # `private` (members and credentials only) or `public` (anyone may pull).
+    visibility: Literal["private", "public"]
+    # Whether tags, once pushed, can never be moved or deleted.
+    immutable_tags: bool
+    retention: RegistryRetention
+    tag_count: int
+    # Storage the repository's images use, measured hourly.
+    storage_bytes: int
+    # When an image was last pushed; null before the first push.
+    last_pushed_at: Optional[str]
+    # `active`, `deleting`, or `suspended` (by an operator).
+    status: Literal["active", "deleting", "suspended"]
+    # Why an operator suspended it; null unless `suspended`.
+    suspended_reason: Optional[str]
+    created_at: str
+    updated_at: str
+    # Increases with every change.
+    version: int
+
+
+class RegistryRepositoryList(TypedDict):
+    data: List[RegistryRepository]
+    # Pass as `cursor` for the next page; null on the last one.
+    next_cursor: Optional[str]
+
+
+class _CreateRegistryRepositoryRequestRequired(TypedDict):
+    # Lower-case path components separated by `/`, such as `api/server`.
+    name: str
+
+
+class CreateRegistryRepositoryRequest(_CreateRegistryRepositoryRequestRequired, total=False):
+    description: str
+    # Default `private`.
+    visibility: Literal["private", "public"]
+    # Default false.
+    immutable_tags: bool
+    retention: RegistryRetentionInput
+
+
+class UpdateRegistryRepositoryRequest(TypedDict, total=False):
+    description: str
+    visibility: Literal["private", "public"]
+    immutable_tags: bool
+    retention: RegistryRetentionInput
+
+
+class RegistryTag(TypedDict):
+    """A tag and the image it points at."""
+
+    name: str
+    digest: str
+    # The manifest's media type: an image index (several platforms) or a single image.
+    media_type: str
+    # The image's size: the manifest and the layers it references.
+    size_bytes: int
+    # For an index, the platforms it holds, such as `linux/amd64`.
+    platforms: List[str]
+    # When the tag was pushed to this image.
+    pushed_at: str
+    # When it was last pulled; null if never.
+    last_pulled_at: Optional[str]
+    # Whether the tag can never be moved or deleted (the repository has immutable tags).
+    immutable: bool
+
+
+class RegistryTagList(TypedDict):
+    data: List[RegistryTag]
+    # Pass as `cursor` for the next page; null on the last one.
+    next_cursor: Optional[str]
+
+
+class RegistryToken(TypedDict):
+    """A credential for the registry only."""
+
+    # e.g. `prt_...`.
+    id: str
+    name: str
+    # `pull`, or `push` (which includes pull).
+    permission: Literal["pull", "push"]
+    # The repositories it may use; empty for every repository in the namespace.
+    repositories: List[str]
+    # When it stops working; null if never.
+    expires_at: Optional[str]
+    # When it last signed in, to the minute; null if never.
+    last_used_at: Optional[str]
+    created_at: str
+    # When it was revoked; null if it was not.
+    revoked_at: Optional[str]
+
+
+class RegistryTokenWithSecret(RegistryToken):
+    # The token's secret, `prt_…`, shown in this answer only: the password for `docker login`.
+    secret: Optional[str]
+
+
+class RegistryTokenList(TypedDict):
+    data: List[RegistryToken]
+    # Pass as `cursor` for the next page; null on the last one.
+    next_cursor: Optional[str]
+
+
+class _CreateRegistryTokenRequestRequired(TypedDict):
+    name: str
+    permission: Literal["pull", "push"]
+
+
+class CreateRegistryTokenRequest(_CreateRegistryTokenRequestRequired, total=False):
+    # Repository names in your namespace, such as `api/server`; left out or empty for all of
+    # them.
+    repositories: List[str]
+    # When it stops working (RFC 3339), at most 10 years away; left out for never.
+    expires_at: str
 
 
 class Accepted(TypedDict):
@@ -317,7 +587,13 @@ class CreateLoadBalancerRequest(_CreateLoadBalancerRequestRequired, total=False)
     # The zone to place the load balancer in, by its code as `GET /public/v1/regions` lists it.
     zone_id: str
     # The listener protocol.
-    protocol: Literal["tcp"]
+    protocol: Literal["tcp", "https"]
+    # `https` only, and required there: an issued certificate from `/public/v1/certificates`.
+    certificate_id: str
+    # `https` only. `modern`: TLS 1.2 and 1.3 with forward-secret AEAD ciphers only.
+    tls_policy: Literal["modern", "tls13"]
+    # `https` only. Also answer port 80, redirecting every request to HTTPS with a `301`.
+    redirect_http: bool
     # `vpc_native` (a VPC zone: needs `public_ip_id` and `subnet_id`) or `appliance` (a standard
     # zone: needs `zone_id`; a load balancer VM with its own public address, billed as that VM).
     kind: Literal["vpc_native", "appliance"]
@@ -342,6 +618,12 @@ class UpdateLoadBalancerRequest(TypedDict, total=False):
     algorithm: Literal["roundrobin", "leastconn", "source"]
     # The whole new set of targets (at most 50).
     instance_ids: List[str]
+    # `https` only: serve this certificate instead.
+    certificate_id: str
+    # `https` only.
+    tls_policy: Literal["modern", "tls13"]
+    # `https` only: turn the port 80 redirect on or off.
+    redirect_http: bool
 
 
 class _LoadBalancerMemberRequired(TypedDict):
@@ -385,6 +667,16 @@ class LoadBalancer(TypedDict):
     in_sync: bool
     created_at: Optional[str]
     updated_at: Optional[str]
+    # The certificate an `https` listener serves; null for `tcp`.
+    certificate_id: Optional[str]
+    # `modern` or `tls13` for `https`; null for `tcp`.
+    tls_policy: Optional[str]
+    # Whether port 80 redirects to HTTPS.
+    redirect_http: bool
+    # The SHA-256 of the certificate the load balancer serves right now (its leaf, lower-case
+    # hex), to compare with the certificate's `fingerprint_sha256` after a renewal; null until
+    # it first serves one.
+    certificate_fingerprint_sha256: Optional[str]
 
 
 class LoadBalancerList(TypedDict):
@@ -1322,6 +1614,12 @@ class InstanceOrderList(TypedDict):
     next_cursor: Optional[str]
 
 
+class MeApiKeyKeyPolicy(TypedDict):
+    """The key's own policy: allow statements that narrow what the key may do."""
+
+    statements: List[IamStatement]
+
+
 class MeApiKey(TypedDict):
     id: str
     name: str
@@ -1334,6 +1632,8 @@ class MeApiKey(TypedDict):
     # `delete` appears only on an AI app's key, together with `write`.
     scopes: List[Literal["read", "write", "delete"]]
     expires_at: Optional[str]
+    # The key's own policy: allow statements that narrow what the key may do.
+    key_policy: Optional[MeApiKeyKeyPolicy]
 
 
 class Me(TypedDict):
@@ -2768,6 +3068,845 @@ class MigrationTerraformFilesItem(TypedDict):
 
 class MigrationTerraform(TypedDict):
     files: List[MigrationTerraformFilesItem]
+
+
+class DNSZone(TypedDict):
+    """A zone hosted on Pantech DNS."""
+
+    # e.g. `dnsz_...`.
+    id: str
+    # The zone's name, lower-case; an internationalised name in punycode.
+    name: str
+    # Your note about it; may be empty.
+    description: str
+    # `pending` (being created), `awaiting_delegation` (set `name_servers` at your registrar),
+    # `active` (delegated to Pantech), `suspended` (by an operator), `deleting`, `deleted`, or
+    # `failed` (see `failure_code`).
+    status: Literal["pending", "awaiting_delegation", "active", "suspended", "deleting", "deleted", "failed"]
+    # Why it failed: `delegation_timeout` (not delegated within 14 days, so it was removed),
+    # `provider_rejected` or `provider_limit`.
+    failure_code: Optional[str]
+    # The zone's own two Pantech DNS name servers, to delegate to at your registrar: set exactly
+    # these, no more and no fewer.
+    name_servers: List[str]
+    # The Pantech domain (`dom_…`) delegated to this zone; null when none is.
+    domain_id: Optional[str]
+    # Record sets in the zone, including the managed SOA and NS.
+    record_count: int
+    # When its delegation was last checked (RFC 3339, UTC); null before the first check.
+    last_checked_at: Optional[str]
+    # While the zone awaits delegation, when it is removed if the registrar still does not
+    # delegate to its name servers (14 days after it started waiting); null otherwise.
+    delegation_deadline_at: Optional[str]
+    # When it last became `active` (RFC 3339, UTC); null if it never has.
+    activated_at: Optional[str]
+    # Why an operator suspended it; null unless `suspended`.
+    suspended_reason: Optional[str]
+    # When it was created (RFC 3339, UTC).
+    created_at: str
+    # When it last changed (RFC 3339, UTC).
+    updated_at: str
+    # Increases with every change.
+    version: int
+
+
+class DNSZoneQuote(TypedDict):
+    """What hosted zones cost: the first free_zones live zones are free, each further one is billed per hour."""
+
+    # Live zones each organization keeps for free: 5.
+    free_zones: int
+    # Your live zones now.
+    live_zones: int
+    # Your live zones beyond the free ones: max(0, live_zones - free_zones).
+    billable_zones: int
+    currency: Literal["NGN", "USD"]
+    # One zone beyond the free ones over a 730-hour month, in the minor unit of currency (50 is
+    # $0.50).
+    monthly_per_zone_minor: int
+    # billable_zones x monthly_per_zone_minor: what your zones beyond the free ones cost a month
+    # at today's price.
+    monthly_estimate_minor: int
+    nominal_month_hours: int
+
+
+class DNSZoneList(TypedDict):
+    data: List[DNSZone]
+    # Pass as `cursor` for the next page; null on the last one.
+    next_cursor: Optional[str]
+
+
+class DNSRecord(TypedDict):
+    """One record set: a name and type, its TTL and every value."""
+
+    # e.g. `dnsr_...`.
+    id: str
+    # The zone (`dnsz_…`).
+    zone_id: str
+    # Relative to the zone: `@` for the apex, `www`, `*.dev`, `_dmarc`.
+    name: str
+    # The absolute name, without a trailing dot.
+    fqdn: str
+    # `SOA` only for the managed apex record.
+    type: Literal["A", "AAAA", "CNAME", "MX", "TXT", "SRV", "CAA", "NS", "PTR", "SOA"]
+    # Seconds resolvers may cache it, 60 to 86400.
+    ttl: int
+    # Its values, canonical and sorted: host names with a trailing dot, TXT as quoted 255-byte
+    # strings.
+    values: List[str]
+    # Whether private and carrier-grade NAT addresses are allowed in `values`.
+    allow_private: bool
+    # Your note about it; may be empty.
+    comment: str
+    # True for the apex `SOA` and `NS`, which Pantech manages: read-only.
+    managed: bool
+    # `pending` until its latest change is live, `active`, `deleting`, or `failed` (see
+    # `failure_code`; the last values that applied keep answering).
+    status: Literal["pending", "active", "deleting", "failed"]
+    # Why its latest change failed, e.g. `invalid_change`.
+    failure_code: Optional[str]
+    # Increases with every change; send it as `If-Match` to change only what you read.
+    version: int
+    # When it was created (RFC 3339, UTC).
+    created_at: str
+    # When it last changed (RFC 3339, UTC).
+    updated_at: str
+
+
+class DNSRecordList(TypedDict):
+    data: List[DNSRecord]
+    # Pass as `cursor` for the next page; null on the last one.
+    next_cursor: Optional[str]
+
+
+class DNSRecordBatchResult(TypedDict):
+    # Every record set changed, in the order of the changes.
+    data: List[DNSRecord]
+
+
+class _CreateDNSZoneRequestRequired(TypedDict):
+    # A domain you own or a subdomain of one, at most 253 characters.
+    name: str
+
+
+class CreateDNSZoneRequest(_CreateDNSZoneRequestRequired, total=False):
+    # A note for yourself, at most 255 characters.
+    description: str
+
+
+class UpdateDNSZoneRequest(TypedDict, total=False):
+    # A new note, at most 255 characters.
+    description: str
+
+
+class _CreateDNSRecordRequestRequired(TypedDict):
+    # Relative to the zone (`@`, `www`, `*.dev`, `_dmarc`), or fully qualified ending in the
+    # zone.
+    name: str
+    type: Literal["A", "AAAA", "CNAME", "MX", "TXT", "SRV", "CAA", "NS", "PTR"]
+    # 1 to 100 values in the type's format.
+    values: List[str]
+
+
+class CreateDNSRecordRequest(_CreateDNSRecordRequestRequired, total=False):
+    # Seconds, 60 to 86400.
+    ttl: int
+    # Allow private and carrier-grade NAT addresses (for names that resolve inside a private
+    # network).
+    allow_private: bool
+    # A note for yourself, at most 255 characters.
+    comment: str
+
+
+class UpdateDNSRecordRequest(TypedDict, total=False):
+    # A new TTL in seconds.
+    ttl: int
+    # The new values, replacing every old one.
+    values: List[str]
+    allow_private: bool
+    # A new note, at most 255 characters.
+    comment: str
+
+
+class _DNSRecordChangeRequired(TypedDict):
+    action: Literal["create", "update", "delete"]
+
+
+class DNSRecordChange(_DNSRecordChangeRequired, total=False):
+    # The record set an `update` or `delete` changes (`dnsr_…`).
+    record_id: str
+    # When sent, the record's current version: the change is refused with `412 VERSION_CONFLICT`
+    # otherwise.
+    version: int
+    record: DNSRecordChangeRecord
+
+
+class DNSRecordChangeRecord(TypedDict, total=False):
+    """The record set a `create` or `update` writes; a `delete` takes none."""
+
+    # Relative to the zone (`@`, `www`, `*.dev`, `_dmarc`), or fully qualified ending in the
+    # zone.
+    name: str
+    type: Literal["A", "AAAA", "CNAME", "MX", "TXT", "SRV", "CAA", "NS", "PTR"]
+    ttl: int
+    # 1 to 100 values in the type's format.
+    values: List[str]
+    allow_private: bool
+    # At most 255 characters.
+    comment: str
+
+
+class DNSRecordBatchRequest(TypedDict):
+    # 1 to 1,000 changes, applied in order, all or nothing.
+    changes: List[DNSRecordChange]
+
+
+class _ImportDNSZoneRequestRequired(TypedDict):
+    # A BIND zone file, at most 2 MiB.
+    zone_file: str
+
+
+class ImportDNSZoneRequest(_ImportDNSZoneRequestRequired, total=False):
+    # Also delete record sets that are not in the file.
+    replace: bool
+
+
+class _TLDOfferRequired(TypedDict):
+    tld: str
+    currency: Literal["NGN", "USD"]
+    # The first year of a registration, in minor units.
+    register_minor: int
+    # Each further year, and each year of a renewal.
+    renew_minor: int
+    # A transfer in, which adds one year.
+    transfer_minor: int
+    # Whether search tries this TLD for a bare name.
+    featured: bool
+
+
+class TLDOffer(_TLDOfferRequired, total=False):
+    """One TLD on sale, priced per year."""
+
+    # The TLD's registry hides every registrant's contact details itself, so privacy is always
+    # on for its domains and cannot be turned off (asking to turn it off is 422
+    # VALIDATION_FAILED on `privacy`, code PRIVACY_ALWAYS_ON).
+    privacy_always_on: bool
+
+
+class TLDOfferList(TypedDict):
+    data: List[TLDOffer]
+    # Always null: this list is returned whole.
+    next_cursor: Optional[str]
+
+
+class _DomainSearchResultPriceRequired(TypedDict):
+    tld: str
+    currency: Literal["NGN", "USD"]
+    register_minor: int
+    renew_minor: int
+    transfer_minor: int
+    featured: bool
+
+
+class DomainSearchResultPrice(_DomainSearchResultPriceRequired, total=False):
+    """Its TLD's price; null when the TLD is not sold."""
+
+    privacy_always_on: bool
+
+
+class DomainSearchResult(TypedDict):
+    name: str
+    tld: str
+    # `unknown`: it could not be checked; try again.
+    status: Literal["available", "unavailable", "unknown"]
+    # Its TLD's price; null when the TLD is not sold.
+    price: Optional[DomainSearchResultPrice]
+
+
+class DomainSearchResultList(TypedDict):
+    data: List[DomainSearchResult]
+    # Always null: this list is returned whole.
+    next_cursor: Optional[str]
+
+
+class _DomainTransferCheckPriceRequired(TypedDict):
+    tld: str
+    currency: Literal["NGN", "USD"]
+    register_minor: int
+    renew_minor: int
+    transfer_minor: int
+    featured: bool
+
+
+class DomainTransferCheckPrice(_DomainTransferCheckPriceRequired, total=False):
+    """Its TLD's price; null when the TLD is not sold."""
+
+    privacy_always_on: bool
+
+
+class DomainTransferCheck(TypedDict):
+    name: str
+    transferable: bool
+    # A stable code saying why it cannot be transferred now; null when it can.
+    reason: Optional[str]
+    # Its TLD's price; null when the TLD is not sold.
+    price: Optional[DomainTransferCheckPrice]
+
+
+class Domain(TypedDict):
+    """A domain Pantech holds for your organization."""
+
+    # e.g. `dom_...`.
+    id: str
+    name: str
+    tld: str
+    status: Literal[
+        "pending", "registering", "transferring", "active", "expired", "failed", "transferred_out", "suspended"
+    ]
+    # Why its registration or transfer failed (the order's `failure_code`); null otherwise.
+    failure_code: Optional[str]
+    # Whether Pantech renews it for a year 30 days before expiry, paid from credit.
+    auto_renew: bool
+    transfer_lock: bool
+    # Whether the registrant's details are hidden from public lookups.
+    privacy: bool
+    name_server_mode: Literal["pantech", "custom"]
+    name_servers: List[str]
+    # The Pantech zone it is delegated to; null for custom name servers.
+    zone_id: Optional[str]
+    registered_at: Optional[str]
+    expires_at: Optional[str]
+    # False until the registrant clicks the registry's verification email; an unverified
+    # registrant is suspended after 15 days.
+    contact_verified: bool
+    # True while a lock, privacy, name server or contact change is being applied at the
+    # registry.
+    settings_pending: bool
+    # True while an auth code is being fetched.
+    auth_code_pending: bool
+    suspended_reason: Optional[str]
+    created_at: str
+    updated_at: str
+    version: int
+
+
+class DomainList(TypedDict):
+    data: List[Domain]
+    # Pass as `cursor` for the next page; null on the last one.
+    next_cursor: Optional[str]
+
+
+class DomainOrder(TypedDict):
+    """One paid action on a domain."""
+
+    # e.g. `dor_...`.
+    id: str
+    domain_id: str
+    domain_name: str
+    kind: Literal["register", "renew", "transfer"]
+    years: int
+    # The price before VAT, in minor units.
+    amount_minor: int
+    currency: Literal["NGN", "USD"]
+    # `pending` → `paid` → `submitted` → `succeeded` | `failed`.
+    status: Literal["pending", "awaiting_payment", "paid", "submitted", "succeeded", "failed"]
+    failure_code: Optional[str]
+    # Whether a failed order's charge, VAT included, was returned to credit.
+    refunded: bool
+    # While `status` is `awaiting_payment`: the page where your bank asks you to confirm the
+    # saved-card payment of the difference (US dollars only), when it does.
+    payment_url: Optional[str]
+    # While `status` is `awaiting_payment`: when the order stops waiting and fails with
+    # `insufficient_credit`.
+    payment_expires_at: Optional[str]
+    created_at: str
+    completed_at: Optional[str]
+
+
+class DomainOrderList(TypedDict):
+    data: List[DomainOrder]
+    # Always null: the latest 50 orders are returned whole.
+    next_cursor: Optional[str]
+
+
+class DomainWithOrder(TypedDict):
+    domain: Domain
+    order: DomainOrder
+
+
+class _DomainContactRequired(TypedDict):
+    first_name: str
+    last_name: str
+    email: str
+    # `+CC.NUMBER`.
+    phone: str
+    address_line1: str
+    city: str
+    # ISO 3166-1 alpha-2.
+    country_code: str
+
+
+class DomainContact(_DomainContactRequired, total=False):
+    """The registrant, also used as the admin and technical contact."""
+
+    # `person` or `company`.
+    type: Literal["person", "company"]
+    # The company's name: required when `type` is `company`, optional otherwise.
+    organization_name: str
+    address_line2: str
+    state: str
+    postal_code: str
+
+
+class _RegisterDomainRequestRequired(TypedDict):
+    name: str
+    contact: DomainContact
+    # Must be true: the registrant accepted the registration agreement.
+    accept_terms: bool
+
+
+class RegisterDomainRequest(_RegisterDomainRequestRequired, total=False):
+    years: int
+    # Defaults to false.
+    auto_renew: bool
+    # Defaults to true.
+    privacy: bool
+
+
+class _TransferDomainRequestRequired(TypedDict):
+    name: str
+    # The code from the current registrar.
+    auth_code: str
+    contact: DomainContact
+    accept_terms: bool
+
+
+class TransferDomainRequest(_TransferDomainRequestRequired, total=False):
+    years: int
+    auto_renew: bool
+    # Defaults to true.
+    privacy: bool
+
+
+class UpdateDomainRequest(TypedDict, total=False):
+    auto_renew: bool
+    transfer_lock: bool
+    privacy: bool
+
+
+class _SetDomainNameServersRequestRequired(TypedDict):
+    use_pantech_dns: bool
+
+
+class SetDomainNameServersRequest(_SetDomainNameServersRequestRequired, total=False):
+    # With `use_pantech_dns`, the zone to delegate to (`dnsz_…`); defaults to your zone with the
+    # domain's name.
+    zone_id: str
+    # Without `use_pantech_dns`, 2 to 6 host names.
+    name_servers: List[str]
+
+
+class UpdateDomainContactRequest(TypedDict):
+    contact: DomainContact
+
+
+class RenewDomainRequest(TypedDict, total=False):
+    years: int
+
+
+class DomainAuthCode(TypedDict):
+    auth_code: str
+    # When it stops being shown (RFC 3339, UTC).
+    expires_at: str
+
+
+class DomainAuthCodePending(TypedDict):
+    status: Literal["pending"]
+
+
+class IamAction(TypedDict):
+    """One action of the closed catalogue."""
+
+    # `<service>:<verb>`.
+    action: str
+    service: str
+    description: str
+    # What the action is on; empty for an account-wide action such as `billing:BuyCredit`.
+    resource_types: List[str]
+    # The action only reads.
+    read: bool
+
+
+class IamActionList(TypedDict):
+    data: List[IamAction]
+
+
+class IamSettings(TypedDict):
+    """The organization's access setting."""
+
+    # What a member may do with no policy: `read` every Read action (the default), or `none`.
+    member_baseline: Literal["read", "none"]
+    # 0 until an owner first changes it.
+    version: int
+    updated_at: Optional[str]
+
+
+class UpdateIamSettingsRequest(TypedDict):
+    member_baseline: Literal["read", "none"]
+
+
+class IamTeam(TypedDict):
+    """A named group of the organization's members."""
+
+    id: str
+    # 1 to 64 characters, unique in the organization (case-insensitive).
+    name: str
+    description: str
+    member_count: int
+    # The policies attached to the team.
+    policy_ids: List[str]
+    created_at: str
+    updated_at: str
+    version: int
+
+
+class IamTeamList(TypedDict):
+    data: List[IamTeam]
+    # Pass as `cursor` for the next page; null on the last one.
+    next_cursor: Optional[str]
+
+
+class _CreateIamTeamRequestRequired(TypedDict):
+    # 1 to 64 characters, trimmed.
+    name: str
+
+
+class CreateIamTeamRequest(_CreateIamTeamRequestRequired, total=False):
+    # At most 255 characters.
+    description: str
+
+
+class UpdateIamTeamRequest(TypedDict, total=False):
+    # A new name, 1 to 64 characters.
+    name: str
+    # A new description, at most 255 characters.
+    description: str
+
+
+class IamTeamMember(TypedDict):
+    user_id: str
+    email: str
+    name: str
+    role: Literal["owner", "admin", "member"]
+    added_at: str
+
+
+class IamTeamMemberList(TypedDict):
+    data: List[IamTeamMember]
+    # Pass as `cursor` for the next page; null on the last one.
+    next_cursor: Optional[str]
+
+
+class IamMember(TypedDict):
+    """An active member of the organization."""
+
+    user_id: str
+    email: str
+    name: str
+    role: Literal["owner", "admin", "member"]
+    team_ids: List[str]
+    # Distinct policies that apply to the member, attached directly or through any of their
+    # teams.
+    policy_count: int
+
+
+class IamMemberList(TypedDict):
+    data: List[IamMember]
+    # Pass as `cursor` for the next page; null on the last one.
+    next_cursor: Optional[str]
+
+
+class IamStatementConditions(TypedDict, total=False):
+    """All present conditions must hold for the statement to apply; null for none."""
+
+    # The request's client address is in one of these IPv4 or IPv6 CIDR blocks (a bare address
+    # is its /32 or /128).
+    source_ip: Optional[List[str]]
+    # `true`: applies only when the session authenticated with MFA.
+    mfa: Optional[bool]
+
+
+class _IamStatementRequired(TypedDict):
+    effect: Literal["allow", "deny"]
+    # Actions from `GET /iam/actions`.
+    actions: List[str]
+    # `*`, a resource id (`vm_…`, `dnsz_…`), or `name:<glob>` matched against the resource's
+    # name (`*` and `?`, case-insensitive).
+    resources: List[str]
+
+
+class IamStatement(_IamStatementRequired, total=False):
+    # Optional (null when absent), unique within the policy, 1 to 64 letters, digits, `_` or
+    # `-`.
+    sid: Optional[str]
+    # All present conditions must hold for the statement to apply; null for none.
+    conditions: Optional[IamStatementConditions]
+
+
+class IamPolicy(TypedDict):
+    """A named document of statements: the organization's own, or one of Pantech's managed policies (`managed: true`, id `pol_pantech_<name>`, read-only)."""
+
+    id: str
+    name: str
+    description: str
+    managed: bool
+    statements: List[IamStatement]
+    attachment_count: int
+    created_at: str
+    updated_at: str
+    # Send as `If-Match` to change the policy only if it has not changed since.
+    version: int
+
+
+class IamPolicyList(TypedDict):
+    data: List[IamPolicy]
+    # Pass as `cursor` for the next page; null on the last one.
+    next_cursor: Optional[str]
+
+
+class _IamPolicyRequestRequired(TypedDict):
+    # 1 to 64 letters, digits, spaces, `.`, `_` or `-`, starting with a letter or digit, unique
+    # in the organization.
+    name: str
+    statements: List[IamStatement]
+
+
+class IamPolicyRequest(_IamPolicyRequestRequired, total=False):
+    # At most 255 characters.
+    description: str
+
+
+class IamAttachment(TypedDict):
+    policy_id: str
+    principal_type: Literal["member", "team"]
+    # A member's user id (`usr_…`) or a team id (`team_…`).
+    principal_id: str
+    attached_at: str
+
+
+class IamAttachmentList(TypedDict):
+    data: List[IamAttachment]
+
+
+class AttachIamPolicyRequest(TypedDict):
+    principal_type: Literal["member", "team"]
+    # A member's user id or a team id.
+    principal_id: str
+
+
+class IamEffectivePolicy(TypedDict):
+    policy_id: str
+    # The team that brought the policy; null when it is attached to the member directly.
+    team_id: Optional[str]
+
+
+class IamEffectiveAccess(TypedDict):
+    user_id: str
+    role: Literal["owner", "admin", "member"]
+    teams: List[str]
+    policies: List[IamEffectivePolicy]
+    member_baseline: Literal["read", "none"]
+
+
+class _IamSimulationRequestRequired(TypedDict):
+    # The member to simulate.
+    user_id: str
+    action: str
+
+
+class IamSimulationRequest(_IamSimulationRequestRequired, total=False):
+    # A resource id, such as `vm_01jd…`.
+    resource: str
+    # The resource's name, for `name:` patterns.
+    resource_name: str
+    # The client address to simulate.
+    source_ip: str
+    # Whether the session signed in with MFA; false when omitted.
+    mfa: bool
+
+
+class IamSimulation(TypedDict):
+    allowed: bool
+    decision: Literal["owner", "admin", "allow", "baseline_read", "explicit_deny", "implicit_deny"]
+    # The policy whose statement decided, for `allow` and `explicit_deny`.
+    policy_id: Optional[str]
+    # That statement's sid, when it has one.
+    sid: Optional[str]
+
+
+class CertificateValidation(TypedDict):
+    """How one name is proved to be yours."""
+
+    # The name, as on the certificate.
+    name: str
+    # `pantech_dns`: the name is in an active Pantech DNS zone of your organization and Pantech
+    # writes the challenge records itself.
+    method: Literal["pantech_dns", "cname"]
+    # The Pantech DNS zone (`dnsz_…`) for `pantech_dns`; null otherwise.
+    zone_id: Optional[str]
+    # For `cname`: the name of the CNAME to add, e.g. `_acme-challenge.example.com`.
+    cname_name: Optional[str]
+    # For `cname`: what the CNAME points at.
+    cname_target: Optional[str]
+    # `pending`: waiting for the CNAME.
+    status: Literal["pending", "ready", "valid", "invalid"]
+
+
+class CertificateUsage(TypedDict):
+    """A Pantech resource using a certificate."""
+
+    # What uses it, e.g. `load_balancer`.
+    type: str
+    # Its id.
+    id: str
+
+
+class Certificate(TypedDict):
+    """A TLS certificate Pantech issued, or one you imported."""
+
+    # e.g. `cert_...`.
+    id: str
+    # `public`: issued and renewed by Pantech through a publicly trusted certificate authority.
+    kind: Literal["public", "imported"]
+    # 1 to 100 DNS names, lower-case, internationalised names in punycode.
+    names: List[str]
+    # The first name when it is at most 64 characters, else null.
+    common_name: Optional[str]
+    # Your note about it; may be empty.
+    description: str
+    # The key's algorithm and size.
+    key_type: Literal["ecdsa-p256", "ecdsa-p384", "rsa-2048", "rsa-3072", "rsa-4096"]
+    # Whether the private key can be exported.
+    exportable: bool
+    # `renewing`: a renewal is in progress while the current certificate keeps working.
+    status: Literal["pending_validation", "issuing", "issued", "renewing", "expired", "revoked", "failed"]
+    # While an issue or renewal is in progress, what it waits for; null otherwise.
+    pending_reason: Optional[str]
+    # Why a request `failed`; null otherwise.
+    failure_code: Optional[str]
+    # One per name, for a certificate Pantech issues; empty for an imported one.
+    validations: List[CertificateValidation]
+    # While a first issue waits for its CNAMEs: when it fails `validation_timeout`.
+    validation_deadline_at: Optional[str]
+    # The issuing certificate authority's name, as written in the certificate.
+    issuer: Optional[str]
+    # Hexadecimal.
+    serial_number: Optional[str]
+    # SHA-256 of the certificate, lower-case hex.
+    fingerprint_sha256: Optional[str]
+    # Start of validity.
+    not_before: Optional[str]
+    # End of validity.
+    not_after: Optional[str]
+    # When this certificate was last issued or imported.
+    issued_at: Optional[str]
+    # When Pantech starts renewing it (30 days before `not_after`); null for an imported
+    # certificate.
+    renew_after: Optional[str]
+    # For a certificate Pantech issues, once issued; null otherwise.
+    renewal_status: Optional[str]
+    # Pantech resources using it: each `https` load balancer serving it.
+    in_use_by: List[CertificateUsage]
+    # True between a revoke request and the authority confirming it.
+    revocation_pending: bool
+    # When it was revoked.
+    revoked_at: Optional[str]
+    # When it was requested or imported.
+    created_at: str
+    # Last change.
+    updated_at: str
+    # Increments on every change.
+    version: int
+
+
+class CertificateList(TypedDict):
+    data: List[Certificate]
+    # Pass as `cursor` for the next page; null on the last one.
+    next_cursor: Optional[str]
+
+
+class ExportedCertificate(TypedDict):
+    """A certificate with its private key."""
+
+    # The certificate, PEM.
+    certificate_pem: str
+    # The intermediates, PEM; may be empty for an imported certificate without them.
+    chain_pem: str
+    # The private key, PEM: PKCS #8 for a certificate Pantech issued, as imported otherwise.
+    private_key_pem: str
+    # End of validity.
+    not_after: str
+
+
+class _RequestCertificateRequestRequired(TypedDict):
+    # 1 to 100 names; wildcards as `*.example.com`.
+    names: List[str]
+
+
+class RequestCertificateRequest(_RequestCertificateRequestRequired, total=False):
+    """A certificate to request."""
+
+    # Default `ecdsa-p256`.
+    key_type: Literal["ecdsa-p256", "rsa-2048"]
+    # Allow exporting the private key later.
+    exportable: bool
+    # Your note about it.
+    description: str
+
+
+class _ImportCertificateRequestRequired(TypedDict):
+    # The certificate, PEM.
+    certificate_pem: str
+    # The unencrypted private key, PEM.
+    private_key_pem: str
+
+
+class ImportCertificateRequest(_ImportCertificateRequestRequired, total=False):
+    """A certificate to import."""
+
+    # The intermediates, PEM, the certificate's issuer first.
+    chain_pem: str
+    # Allow exporting the private key later.
+    exportable: bool
+    # Your note about it.
+    description: str
+
+
+class _ReimportCertificateRequestRequired(TypedDict):
+    # The certificate, PEM.
+    certificate_pem: str
+    # The unencrypted private key, PEM.
+    private_key_pem: str
+
+
+class ReimportCertificateRequest(_ReimportCertificateRequestRequired, total=False):
+    """The replacement for an imported certificate, for the same names."""
+
+    # The intermediates, PEM, the certificate's issuer first.
+    chain_pem: str
+
+
+class UpdateCertificateRequest(TypedDict, total=False):
+    """What to change."""
+
+    # Your note about it.
+    description: str
+
+
+class RevokeCertificateRequest(TypedDict, total=False):
+    """Why the certificate is revoked."""
+
+    # Default `unspecified`.
+    reason: Literal["unspecified", "key_compromise"]
 
 
 class QuoteDiskOfferingResponse(TypedDict):

@@ -8,7 +8,7 @@ than on the message.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Mapping, Optional, TypedDict
+from typing import Any, Dict, FrozenSet, List, Literal, Mapping, Optional, TypedDict, get_args
 
 import httpx
 
@@ -21,6 +21,7 @@ __all__ = [
     "PermissionDeniedError",
     "NotFoundError",
     "ConflictError",
+    "PreconditionFailedError",
     "ValidationError",
     "RateLimitError",
     "InternalServerError",
@@ -29,9 +30,122 @@ __all__ = [
     "WaitTimeoutError",
     "OperationFailedError",
     "OrderFailedError",
+    "CloudFailedError",
+    "DNSFailedError",
+    "CertificateFailedError",
     "WebhookVerificationError",
     "FieldError",
+    "DNSErrorCode",
+    "DomainErrorCode",
+    "RegistryErrorCode",
+    "IamErrorCode",
+    "CertificateErrorCode",
+    "DNS_ERROR_CODES",
+    "DOMAIN_ERROR_CODES",
+    "REGISTRY_ERROR_CODES",
+    "IAM_ERROR_CODES",
+    "CERTIFICATE_ERROR_CODES",
 ]
+
+# The problem ``code``s Pantech DNS answers with, besides the platform's usual
+# ones (VALIDATION_FAILED, FORBIDDEN, NOT_FOUND, IDEMPOTENCY_CONFLICT,
+# INSUFFICIENT_DELETE_SCOPE, RATE_LIMITED…). Compare ``err.code`` with these.
+DNSErrorCode = Literal[
+    "DNS_UNAVAILABLE",
+    "DNS_ZONE_NOT_FOUND",
+    "DNS_RECORD_NOT_FOUND",
+    "DNS_ZONE_LIMIT_REACHED",
+    "DNS_ZONE_CREATE_LIMIT_REACHED",
+    "DNS_RECORD_LIMIT_REACHED",
+    "DNS_ZONE_NAME_TAKEN",
+    "DNS_ZONE_ACTIVE_ELSEWHERE",
+    "DNS_RECORD_EXISTS",
+    "DNS_CNAME_CONFLICT",
+    "DNS_RECORD_READ_ONLY",
+    "DNS_ZONE_SUSPENDED",
+    "DNS_ZONE_NOT_WRITABLE",
+    "DNS_ZONE_IN_USE_BY_DOMAIN",
+    "VERSION_CONFLICT",
+    "TOO_MANY_CHANGES",
+    "INVALID_ZONE_FILE",
+]
+
+# The problem ``code``s of domain registration.
+DomainErrorCode = Literal[
+    "DOMAINS_UNAVAILABLE",
+    "DOMAIN_NOT_FOUND",
+    "DOMAIN_ORDER_NOT_FOUND",
+    "DOMAIN_LOOKUP_UNAVAILABLE",
+    "TLD_NOT_SOLD",
+    "DOMAIN_NOT_AVAILABLE",
+    "DOMAIN_NOT_TRANSFERABLE",
+    "DOMAIN_ALREADY_HELD",
+    "DOMAIN_ORDER_IN_FLIGHT",
+    "DOMAIN_ORDER_NOT_AWAITING_PAYMENT",
+    "DOMAIN_ORDER_LIMIT_REACHED",
+    "DOMAIN_NOT_CONFIGURABLE",
+    "DOMAIN_LOCKED",
+    "DOMAIN_ZONE_MISMATCH",
+]
+
+# The problem ``code``s of the container registry.
+RegistryErrorCode = Literal[
+    "REGISTRY_UNAVAILABLE",
+    "REGISTRY_NAMESPACE_NOT_SET",
+    "REGISTRY_NAMESPACE_TAKEN",
+    "REGISTRY_NAMESPACE_LOCKED",
+    "INVALID_REGISTRY_NAMESPACE",
+    "INVALID_REPOSITORY_NAME",
+    "REPOSITORY_NOT_FOUND",
+    "TAG_NOT_FOUND",
+    "REGISTRY_TOKEN_NOT_FOUND",
+    "REPOSITORY_EXISTS",
+    "REPOSITORY_LIMIT_REACHED",
+    "REGISTRY_STORAGE_LIMIT_REACHED",
+    "REGISTRY_TOKEN_LIMIT_REACHED",
+    "TAG_IMMUTABLE",
+    "REPOSITORY_SUSPENDED",
+]
+
+# The problem ``code``s of teams and access policies.
+IamErrorCode = Literal[
+    "ACCESS_DENIED",
+    "IAM_TEAM_NOT_FOUND",
+    "IAM_POLICY_NOT_FOUND",
+    "IAM_ATTACHMENT_NOT_FOUND",
+    "IAM_TEAM_NAME_TAKEN",
+    "IAM_POLICY_NAME_TAKEN",
+    "IAM_TEAM_LIMIT_REACHED",
+    "IAM_POLICY_LIMIT_REACHED",
+    "IAM_ATTACHMENT_LIMIT_REACHED",
+    "IAM_MANAGED_POLICY",
+    "IAM_ADMIN_TARGET",
+    "INVALID_POLICY",
+    "VERSION_CONFLICT",
+]
+
+# The problem ``code``s of Certificate Manager.
+CertificateErrorCode = Literal[
+    "CERTIFICATES_UNAVAILABLE",
+    "CERTIFICATE_NOT_FOUND",
+    "CERTIFICATE_LIMIT_REACHED",
+    "CERTIFICATE_REQUEST_LIMIT_REACHED",
+    "CERTIFICATE_RATE_LIMITED",
+    "CERTIFICATE_IN_USE",
+    "CERTIFICATE_NOT_EXPORTABLE",
+    "CERTIFICATE_NOT_ISSUED",
+    "CERTIFICATE_NOT_REVOCABLE",
+    "CERTIFICATE_NOT_IMPORTED",
+    "CERTIFICATE_NOT_PENDING",
+    "CERTIFICATE_NAMES_MISMATCH",
+    "CONFLICT",
+]
+
+DNS_ERROR_CODES: FrozenSet[str] = frozenset(get_args(DNSErrorCode))
+DOMAIN_ERROR_CODES: FrozenSet[str] = frozenset(get_args(DomainErrorCode))
+REGISTRY_ERROR_CODES: FrozenSet[str] = frozenset(get_args(RegistryErrorCode))
+IAM_ERROR_CODES: FrozenSet[str] = frozenset(get_args(IamErrorCode))
+CERTIFICATE_ERROR_CODES: FrozenSet[str] = frozenset(get_args(CertificateErrorCode))
 
 
 class FieldError(TypedDict):
@@ -130,7 +244,42 @@ class AuthenticationError(APIError):
 
 
 class PaymentRequiredError(APIError):
-    """402: not enough credit for this order."""
+    """402: not enough credit for this order.
+
+    ``domains.wait_for_order`` also raises it for an order ``awaiting_payment``
+    (in US dollars the saved card is charged the difference; in naira the user
+    adds credit): ``payment_url`` is the page where the bank asks the user to
+    confirm the card payment, when it does (None otherwise), and
+    ``payment_expires_at`` when the order fails ``insufficient_credit`` unless
+    paid. ``order`` is the order as the API returned it. All three are None
+    for a 402 answer.
+    """
+
+    payment_url: Optional[str] = None
+    payment_expires_at: Optional[str] = None
+    order: Optional[Mapping[str, Any]] = None
+
+    @classmethod
+    def for_order(cls, kind: str, order: Mapping[str, Any]) -> PaymentRequiredError:
+        """The error for an order waiting for a payment (no URL in the message: it is a payment link)."""
+        expires = order.get("payment_expires_at")
+        confirm = "The bank asks the user to confirm the card payment at payment_url. "
+        err = cls(
+            status=402,
+            code="AWAITING_PAYMENT",
+            title="Payment required",
+            detail=(
+                f"{kind} order {order.get('id', '')} is waiting for a payment: your credit does not cover it. "
+                + (confirm if order.get("payment_url") else "")
+                + "It must be paid"
+                + (f" before {expires}" if expires else " within the hour")
+                + "; the order goes on by itself once it is, and orders.retry_payment tries again at once."
+            ),
+        )
+        err.payment_url = order.get("payment_url")
+        err.payment_expires_at = expires
+        err.order = order
+        return err
 
 
 class PermissionDeniedError(APIError):
@@ -143,6 +292,10 @@ class NotFoundError(APIError):
 
 class ConflictError(APIError):
     """409: the resource is not in a state that allows this, or the name is taken."""
+
+
+class PreconditionFailedError(APIError):
+    """412: the resource changed since you read it (``VERSION_CONFLICT``). Read it again and retry."""
 
 
 class ValidationError(APIError):
@@ -196,7 +349,10 @@ class OperationFailedError(PantechError):
 
 
 class OrderFailedError(PantechError):
-    """An instance or database order ended in ``failed`` or ``payment_failed``."""
+    """An instance, database or domain order ended in ``failed`` or ``payment_failed``.
+
+    ``code`` is the order's ``failure_code``, e.g. ``insufficient_credit``.
+    """
 
     def __init__(self, kind: str, order: Mapping[str, Any]) -> None:
         self.order = order
@@ -226,6 +382,48 @@ class CloudFailedError(PantechError):
         super().__init__(msg)
 
 
+class DNSFailedError(PantechError):
+    """A DNS zone or record set ended ``failed`` (or the zone is being deleted).
+
+    ``kind`` is ``zone`` or ``record``; ``code`` is its ``failure_code``, e.g.
+    ``invalid_change`` or ``delegation_timeout``. A failed record change leaves
+    its last good values answering.
+    """
+
+    def __init__(self, kind: str, resource: Mapping[str, Any]) -> None:
+        self.kind = kind
+        self.resource = resource
+        status = str(resource.get("status") or "")
+        self.code: str = str(resource.get("failure_code") or ("" if status == "failed" else status))
+        if kind == "record":
+            what = f"DNS record {resource.get('id', '')} ({resource.get('fqdn', '')} {resource.get('type', '')})"
+        else:
+            what = f"DNS zone {resource.get('id', '')} ({resource.get('name', '')})"
+        msg = f"{what} {'failed' if status == 'failed' else 'is ' + status}"
+        if self.code:
+            msg += f": {self.code}"
+        super().__init__(msg)
+
+
+class CertificateFailedError(PantechError):
+    """A certificate the SDK waited for ended ``failed``, ``revoked`` or ``expired``.
+
+    ``code`` is its ``failure_code`` (e.g. ``validation_timeout``, ``caa_forbidden``), or the
+    status when it has none.
+    """
+
+    def __init__(self, certificate: Mapping[str, Any]) -> None:
+        self.certificate = certificate
+        status = str(certificate.get("status") or "")
+        self.code: str = str(certificate.get("failure_code") or status)
+        names = certificate.get("names") or []
+        first = names[0] if names else ""
+        msg = f"Certificate {certificate.get('id', '')} ({first}) {status or 'failed'}"
+        if self.code and self.code != status:
+            msg += f": {self.code}"
+        super().__init__(msg)
+
+
 class WebhookVerificationError(PantechError):
     """A webhook delivery's ``Pantech-Signature`` did not verify. Reject the request."""
 
@@ -237,6 +435,7 @@ _STATUS_ERRORS: Dict[int, type] = {
     403: PermissionDeniedError,
     404: NotFoundError,
     409: ConflictError,
+    412: PreconditionFailedError,
     422: ValidationError,
     429: RateLimitError,
 }

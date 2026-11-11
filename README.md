@@ -123,6 +123,138 @@ for f in client.migrate.migrations.export_terraform(plan["id"])["files"]:
 changes its plan, size, address range or role, before you export. See
 `examples/migrate_from_aws.py`.
 
+### Certificates
+
+`client.certificates` issues TLS certificates through a publicly trusted CA and renews them by
+itself, or holds certificates you import, for Pantech load balancers and your own servers.
+
+```python
+cert = client.certificates.request(names=["example.com", "*.example.com"], exportable=True)
+for v in cert["validations"]:
+    if v["method"] == "cname":  # names outside your Pantech DNS zones: add this CNAME once
+        print(v["cname_name"], "CNAME", v["cname_target"])
+cert = client.certificates.wait(cert["id"])  # CertificateFailedError if it cannot be issued
+
+exported = client.certificates.export(cert["id"])  # needs the delete scope; owners are emailed
+write_key_file(exported["private_key_pem"])  # repr(exported) and logs show <hidden>
+```
+
+`client.certificates.import_(certificate_pem=..., private_key_pem=...)` imports one (`import` is a
+Python keyword), `reimport` replaces it before it expires, `verify` re-checks CNAMEs now, and
+`revoke` and `delete` retire it. The SDK never logs request or response bodies, so an imported key
+is not logged either. See `examples/certificates.py`.
+
+An appliance load balancer can end TLS with one: `client.load_balancers.create(...,
+protocol="https", certificate_id=cert["id"], tls_policy="modern", redirect_http=True)`; renewals
+reach it by themselves. VPC native load balancers pass TLS through as `tcp`, and a certificate in
+use cannot be revoked or deleted (`CERTIFICATE_IN_USE`).
+
+### Teams and access policies
+
+`client.iam` controls who in your organization may do what. Policies are statements that allow or
+deny actions (`instances:Stop`, `dns:*`, `*:Read`) on resources (`*`, an id, or `name:staging-*`),
+optionally only from some addresses or with MFA; attach them to members or teams. `pantech.iam`
+builds statements and checks the API's limits before the call.
+
+```python
+from pantech import iam
+
+team = client.iam.teams.create(name="Platform")
+pol = client.iam.policies.create(
+    name="staging-operators",
+    statements=[
+        iam.allow(
+            ["instances:Read", "instances:Start", "instances:Stop"], ["name:staging-*"], source_ip=["102.89.0.0/16"]
+        ),
+        iam.deny(["*:Delete"]),
+    ],
+)
+client.iam.policies.attachments.attach(pol["id"], principal_type="team", principal_id=team["id"])
+client.iam.teams.members.add(team["id"], "usr_...")
+
+sim = client.iam.simulate(user_id="usr_...", action="instances:Delete", resource="vm_...")
+print(sim["allowed"], sim["decision"])  # False explicit_deny
+```
+
+`client.iam.policies.update(id, ..., if_match=pol["version"])` refuses a lost update.
+`client.iam.actions.list()` is the action catalogue, `client.iam.effective_access(user_id)` what
+applies to a member, `client.iam.settings` the organization's `member_baseline`, and
+`iam.MANAGED_POLICY_IDS` Pantech's ready-made policies. See `examples/access_policies.py`.
+
+### Container registry
+
+`client.registry` manages your private registry at `registry.pantechdynamics.com`: one namespace per
+organization, repositories (private by default), their tags, and registry-only tokens for CI and
+clusters. Push and pull with `docker`, logged in with an API key or a registry token.
+
+```python
+client.registry.namespace.set(name="acme")  # once; images are registry.pantechdynamics.com/acme/...
+repo = client.registry.repositories.create(
+    name="api/server", immutable_tags=True, retention={"keep_last": 50, "keep_pattern": "v*"}
+)
+for tag in client.registry.tags.list_all(repo["id"]):
+    print(tag["name"], tag["digest"], tag["size_bytes"])
+
+token = client.registry.tokens.create(name="github-actions", permission="push", repositories=["api/server"])
+save_to_ci_secrets(token["secret"])  # shown only now (None on a replayed create); repr shows <hidden>
+```
+
+`docker login registry.pantechdynamics.com -u pantech -p <secret>` then works for that repository.
+`registry.tokens.delete(token_id)` revokes one. See `examples/container_registry.py`.
+
+### DNS and domains
+
+`client.dns` hosts zones on Pantech DNS, Pantech's own name servers, and `client.domains` buys,
+transfers in and renews domains, paid from your credit. Each zone gets its own two name servers to
+set at your registrar. Changes go live in the background: a record set is `pending` until it
+answers, usually within a minute, and records added before the zone is `active` (delegated) stay
+`pending` until it is. The first 5 zones are free; `client.dns.zones.quote()` gives the price of
+the rest in your currency.
+
+```python
+zone = client.dns.zones.create(name="example.com")
+zone = client.dns.zones.wait(zone["id"])  # until it has its name servers
+print(zone["name_servers"])  # set these at your registrar
+
+rec = client.dns.records.create(zone["id"], name="www", type="A", values=["203.0.113.10"], ttl=300)
+client.dns.records.wait(zone["id"], rec["id"])  # raises DNSFailedError if the change fails
+
+# Change it only if nobody else did since you read it (412 PreconditionFailedError otherwise).
+client.dns.records.update(zone["id"], rec["id"], if_match=rec["version"], values=["203.0.113.11"])
+
+client.dns.records.batch(
+    zone["id"],
+    changes=[
+        {"action": "create", "record": {"name": "@", "type": "MX", "values": ["10 mail.example.com"]}},
+        {"action": "delete", "record_id": "dnsr_..."},
+    ],
+)
+print(client.dns.zones.export_zone_file(zone["id"]))  # BIND zone file, as text
+
+found = client.domains.search(query="example")
+result = client.domains.register(name="example.com", years=1, contact={...}, accept_terms=True)
+try:
+    client.domains.wait_for_order(result["order"]["id"])  # raises OrderFailedError (amount refunded)
+except pantech.PaymentRequiredError as err:
+    # Your credit does not cover it: the order waits for a payment until err.payment_expires_at.
+    # In US dollars your saved card is charged the difference; in naira, add credit.
+    if err.payment_url:  # only when the bank asks to confirm the payment
+        send_user_to(err.payment_url)
+    client.domains.wait_for_order(result["order"]["id"], wait_for_payment=True)
+    # Or, after saving a new card or adding credit: client.domains.orders.retry_payment(result["order"]["id"])
+```
+
+Prices are before VAT. A TLD whose offer has `privacy_always_on: true` (the `.ng` family) has
+privacy protection that cannot be turned off: asking for `privacy=False` is a `422` naming field
+`privacy` with code `PRIVACY_ALWAYS_ON`. `.ng` contacts need `state` and `postal_code`, and
+`name.ng` registrants must be people (`type: "person"`).
+
+`client.dns.zones.import_zone_file(zone_id, zone_file=..., replace=False)` loads a BIND file.
+`client.domains` also has `list_tlds`, `check_transfer`, `transfer`, `update` (auto-renew, transfer
+lock, privacy), `set_name_servers`, `get_contact`/`update_contact`, `renew`,
+`request_auth_code`/`get_auth_code` and `orders` (`list`, `get`, `retry_payment`). The registrant contact is personal data: the SDK
+never logs request or response bodies. See `examples/dns_and_domains.py`.
+
 ## Configuration
 
 | Option | Environment | Default |
@@ -164,10 +296,22 @@ except pantech.APIError as err:
 `APIError` carries `status`, `code` (stable: branch on it), `title`, `detail` (safe to show),
 `request_id` (quote it to support) and `errors`. Subclasses: `BadRequestError` (400),
 `AuthenticationError` (401), `PaymentRequiredError` (402), `PermissionDeniedError` (403),
-`NotFoundError` (404), `ConflictError` (409), `ValidationError` (422), `RateLimitError` (429),
-`InternalServerError` (5xx). No answer at all is `APIConnectionError` (or `APITimeoutError`).
-Waiting raises `OperationFailedError`, `OrderFailedError`, `CloudFailedError` or `WaitTimeoutError`. All of them are
-`PantechError`.
+`NotFoundError` (404), `ConflictError` (409), `PreconditionFailedError` (412), `ValidationError`
+(422), `RateLimitError` (429), `InternalServerError` (5xx). No answer at all is
+`APIConnectionError` (or `APITimeoutError`). Waiting raises `OperationFailedError`,
+`OrderFailedError`, `CloudFailedError`, `DNSFailedError`, `CertificateFailedError` or
+`WaitTimeoutError`. All of them
+are `PantechError`.
+
+DNS and domain codes are typed: `pantech.DNSErrorCode` and `pantech.DomainErrorCode` are `Literal`s
+of every code those endpoints answer with (`DNS_RECORD_EXISTS`, `VERSION_CONFLICT`,
+`DOMAIN_NOT_AVAILABLE`…), and `pantech.DNS_ERROR_CODES` / `pantech.DOMAIN_ERROR_CODES` hold them
+as sets; `pantech.RegistryErrorCode` and `pantech.REGISTRY_ERROR_CODES` do the same for the
+container registry (`REGISTRY_NAMESPACE_NOT_SET`, `TAG_IMMUTABLE`, `REPOSITORY_LIMIT_REACHED`…), and
+`pantech.IamErrorCode` / `pantech.IAM_ERROR_CODES` for access policies (`ACCESS_DENIED`,
+`INVALID_POLICY`, `IAM_ADMIN_TARGET`…), and `pantech.CertificateErrorCode` /
+`pantech.CERTIFICATE_ERROR_CODES` for certificates (`CERTIFICATE_IN_USE`,
+`CERTIFICATE_NOT_EXPORTABLE`…).
 
 ## Webhooks
 
@@ -194,6 +338,13 @@ The comparison is constant-time, and any of several `v1` signatures may match (t
 - [`examples/webhook_server.py`](examples/webhook_server.py): a verified webhook receiver on `http.server`
 - [`examples/migrate_from_aws.py`](examples/migrate_from_aws.py): connect an AWS account, scan it, plan the move
   and write the Terraform
+- [`examples/certificates.py`](examples/certificates.py): request a certificate, print any CNAMEs, wait for it
+- [`examples/access_policies.py`](examples/access_policies.py): a team with a staging-only policy, checked with the
+  simulator
+- [`examples/container_registry.py`](examples/container_registry.py): a namespace, a repository with retention,
+  and a push token for CI
+- [`examples/dns_and_domains.py`](examples/dns_and_domains.py): host a zone, add records and wait for them, find a
+  domain
 
 ## Development
 

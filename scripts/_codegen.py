@@ -134,8 +134,9 @@ def docstring_text(text: str) -> str:
 def comment_lines(text: str, indent: str, width: int = 96) -> List[str]:
     if not text:
         return []
-    # The spec writes console menu paths with U+203A; comments use ">".
-    text = text.replace("\u203a", ">")
+    # The spec writes console menu paths with U+203A and products with U+00D7;
+    # comments use ">" and "x".
+    text = text.replace("\u203a", ">").replace("\u00d7", "x")
     return [indent + "# " + line for line in textwrap.wrap(text, width - len(indent) - 2)]
 
 
@@ -169,6 +170,9 @@ class TypeRegistry:
             return "Any"
         if "$ref" in schema:
             return schema["$ref"].split("/")[-1]
+        for key in ("oneOf", "anyOf"):
+            if key in schema:
+                return self.union(schema[key], ctx)
         if "allOf" in schema:
             parts = schema["allOf"]
             if len(parts) == 1:
@@ -184,6 +188,18 @@ class TypeRegistry:
         if nullable and expr != "Any":
             return f"Optional[{expr}]"
         return expr
+
+    def union(self, parts: List[Dict[str, Any]], ctx: str) -> str:
+        nullable = any(p.get("type") == "null" for p in parts)
+        types: List[str] = []
+        for i, part in enumerate(p for p in parts if p.get("type") != "null"):
+            expr = self.py_type(part, f"{ctx}{i}" if i else ctx)
+            if expr not in types:
+                types.append(expr)
+        if not types or "Any" in types:
+            return "Any"
+        expr = types[0] if len(types) == 1 else "Union[" + ", ".join(types) + "]"
+        return f"Optional[{expr}]" if nullable else expr
 
     def _base_type(self, schema: Dict[str, Any], kind: Optional[str], ctx: str) -> str:
         enum = schema.get("enum")
@@ -315,10 +331,11 @@ class OperationSpec:
     summary: str
     path_params: List[Param]
     query_params: List[Param]
+    header_params: List[Param]  # request headers other than Idempotency-Key, e.g. If-Match
     body_params: List[Param]
     has_body: bool
     body_extra_allowed: bool
-    returns: str  # a type expression, "None", "bytes" or "stream"
+    returns: str  # a type expression, "None", "bytes", "text" or "stream"
     page_item: Optional[str]  # the item type when the response is a cursor page
 
 
@@ -337,10 +354,11 @@ def build_operations(reg: TypeRegistry, skip: FrozenSet[str] = frozenset()) -> D
         ctx = pascal(op_id)
         path_params: List[Param] = []
         query_params: List[Param] = []
+        header_params: List[Param] = []
         for raw in list(item.get("parameters", [])) + list(op.get("parameters", [])):
             p = _param_schema(reg, raw)
-            if p["in"] == "header":
-                continue
+            if p["in"] == "header" and p["name"].lower() == "idempotency-key":
+                continue  # every write takes idempotency_key
             param = Param(
                 name=snake(p["name"]),
                 wire=p["name"],
@@ -348,7 +366,10 @@ def build_operations(reg: TypeRegistry, skip: FrozenSet[str] = frozenset()) -> D
                 required=bool(p.get("required")) or p["in"] == "path",
                 doc=first_sentence(p.get("description")),
             )
-            (path_params if p["in"] == "path" else query_params).append(param)
+            if p["in"] == "header":
+                header_params.append(param)
+            else:
+                (path_params if p["in"] == "path" else query_params).append(param)
         # Path params in the order they appear in the path.
         order = re.findall(r"{([^}]+)}", path)
         path_params.sort(key=lambda prm: order.index(prm.wire))
@@ -378,6 +399,7 @@ def build_operations(reg: TypeRegistry, skip: FrozenSet[str] = frozenset()) -> D
             summary=first_sentence(op.get("summary")) or op_id,
             path_params=path_params,
             query_params=query_params,
+            header_params=header_params,
             body_params=body_params,
             has_body=has_body,
             body_extra_allowed=extra_allowed,
@@ -396,17 +418,30 @@ def _all_fields(reg: TypeRegistry, td: TypedDictDef) -> List[Tuple[str, str, boo
 
 
 def _response_type(reg: TypeRegistry, op: Dict[str, Any], ctx: str) -> Tuple[str, Optional[str]]:
-    for code, resp in sorted(op.get("responses", {}).items(), key=lambda kv: str(kv[0])):
-        if not str(code).startswith("2"):
-            continue
+    successes = sorted(
+        ((str(code), resp) for code, resp in op.get("responses", {}).items() if str(code).startswith("2")),
+        key=lambda kv: kv[0],
+    )
+    for _code, resp in successes:
         content = resp.get("content") or {}
         if not content:
             return "None", None
         if "text/event-stream" in content:
             return "stream", None
         if "application/json" not in content:
+            if any(ct.startswith("text/") for ct in content):
+                return "text", None
             return "bytes", None
+        # Several JSON successes (200 with the result, 202 while it is on its
+        # way) are a union of their bodies.
+        others = [
+            r["content"]["application/json"].get("schema", {})
+            for _c, r in successes
+            if r is not resp and "application/json" in (r.get("content") or {})
+        ]
         schema = content["application/json"].get("schema", {})
+        if others:
+            return reg.union([schema, *others], ctx + "Response"), None
         expr = reg.py_type(schema, ctx + "Response")
         page_item = None
         resolved = reg.resolve(schema)
