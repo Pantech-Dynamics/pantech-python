@@ -49,6 +49,8 @@ __all__ = [
     "CreateDNSZoneRequest",
     "CreateDatabaseRequest",
     "CreateFirewallRuleRequest",
+    "CreateFunctionKeyRequest",
+    "CreateFunctionRequest",
     "CreateIamTeamRequest",
     "CreateInstanceRequest",
     "CreateKubernetesClusterRequest",
@@ -66,6 +68,8 @@ __all__ = [
     "CreateSubnetRequest",
     "CreateVolumeRequest",
     "CreateWebhookRequest",
+    "CreatedFunction",
+    "CreatedFunctionKey",
     "CreditOutlook",
     "CreditPurchase",
     "CreditPurchaseReceipt",
@@ -81,6 +85,7 @@ __all__ = [
     "Database",
     "DatabaseAccessRule",
     "DatabaseAccessRuleRequest",
+    "DatabaseCACertificate",
     "DatabaseEffectiveAccessRule",
     "DatabaseEngine",
     "DatabaseEngineList",
@@ -92,6 +97,10 @@ __all__ = [
     "DatabaseOrderAccepted",
     "DatabaseOrderList",
     "DatabasePasswordAccepted",
+    "DeployFunctionMultipart",
+    "DeployFunctionRequest",
+    "DeployFunctionRequestSource",
+    "DeployFunctionSettings",
     "DiskOffering",
     "DiskOfferingList",
     "Domain",
@@ -114,6 +123,14 @@ __all__ = [
     "FirewallRule",
     "FirewallRuleFields",
     "FirewallRuleList",
+    "Function",
+    "FunctionDeployment",
+    "FunctionEnvironmentVariable",
+    "FunctionKey",
+    "FunctionKeyList",
+    "FunctionList",
+    "FunctionVersion",
+    "FunctionVersionList",
     "GeneratedSSHKey",
     "GetKubernetesLiveManifestsResponse",
     "GetKubernetesWorkloadsResponse",
@@ -269,6 +286,7 @@ __all__ = [
     "UpdateDNSZoneRequest",
     "UpdateDomainContactRequest",
     "UpdateDomainRequest",
+    "UpdateFunctionRequest",
     "UpdateIamSettingsRequest",
     "UpdateIamTeamRequest",
     "UpdateKubernetesClusterRequest",
@@ -531,6 +549,27 @@ class CreateFirewallRuleRequest(_CreateFirewallRuleRequestRequired, total=False)
     action: Literal["allow", "deny"]
 
 
+class CreateFunctionKeyRequest(TypedDict):
+    # A name for the key, such as `billing-service`: 1 to 63 lowercase letters, digits and
+    # hyphens.
+    name: str
+
+
+class _CreateFunctionRequestRequired(TypedDict):
+    # 1 to 63 lowercase letters, digits and hyphens, starting with a letter; unique in its zone.
+    name: str
+    # The zone the function runs in, such as `af-abj-2`.
+    zone_id: str
+
+
+class CreateFunctionRequest(_CreateFunctionRequestRequired, total=False):
+    # `key` (the default) needs one of the function's keys; `public` lets anyone with the URL
+    # call it.
+    auth: Literal["key", "public"]
+    # The most requests it serves at once.
+    max_concurrency: int
+
+
 class _CreateInstanceRequestRequired(TypedDict):
     # 1 to 255 characters of lowercase letters a-z, digits 0-9 and hyphens (-), starting and
     # ending with a letter or digit, unique among your instances.
@@ -610,6 +649,187 @@ class CreateLoadBalancerRequest(_CreateLoadBalancerRequestRequired, total=False)
     cidr_list: List[str]
     # Instances to spread traffic across (at most 50).
     instance_ids: List[str]
+
+
+class Function(TypedDict):
+    """A function: code that runs on each request to its URL."""
+
+    # The function's id, starting `fn_`.
+    id: str
+    # The function's name.
+    name: str
+    # The zone it runs in.
+    zone_id: str
+    # Where it answers: `https://<random>.fn.pantechdynamics.com`.
+    url: str
+    # `key`: callers send one of its keys.
+    auth: Literal["key", "public"]
+    # The most requests it serves at once.
+    max_concurrency: int
+    # The newest version's number; 0 before the first deploy.
+    latest_version: int
+    # The version serving; 0 until a build first succeeds.
+    active_version: int
+    # `active`, or `deleted` once deleted.
+    state: Literal["active", "deleted"]
+    # When it was created.
+    created_at: str
+
+
+class CreatedFunction(Function):
+    """A new function, and the operation that recorded it (already `succeeded`)."""
+
+    # The operation that created the function.
+    operation_id: str
+
+
+class FunctionKey(TypedDict):
+    """A key a `key` function is called with, without the key itself."""
+
+    # The key's id, starting `fnk_`.
+    id: str
+    # The function it opens.
+    function_id: str
+    # The key's name.
+    name: str
+    # The key's last four characters, to tell keys apart.
+    hint: str
+    # When it was created.
+    created_at: str
+    # When it was revoked; null while it works.
+    revoked_at: Optional[str]
+
+
+class CreatedFunctionKey(FunctionKey):
+    """A new key. `key` is shown only here."""
+
+    # The key itself, starting `pfk_`.
+    key: str
+
+
+class DeployFunctionMultipart(TypedDict):
+    spec: DeployFunctionSettings
+    # The zip: at most 25 MiB zipped and 250 MiB unpacked, files and folders only.
+    code: str
+
+
+class DeployFunctionRequestSource(TypedDict):
+    """The single source file."""
+
+    # The file's name, such as `index.mjs` or `main.py`, with no folders.
+    filename: str
+    # The file's text, at most 256 KiB.
+    content: str
+
+
+class _DeployFunctionRequestRequired(TypedDict):
+    # The language runtime.
+    runtime: Literal["nodejs22", "python3.13"]
+    # The single source file.
+    source: DeployFunctionRequestSource
+
+
+class DeployFunctionRequest(_DeployFunctionRequestRequired, total=False):
+    """A deploy of one inline file."""
+
+    # What to call: `file.export` for Node.js (default `index.handler`) or `module.function` for
+    # Python (default `main.handler`).
+    handler: str
+    # Memory per instance, in MiB.
+    memory_mib: int
+    # How long one request may run.
+    timeout_seconds: int
+    # Environment variables, at most 4 KiB in all.
+    environment: List[FunctionEnvironmentVariable]
+
+
+class _DeployFunctionSettingsRequired(TypedDict):
+    # The language runtime.
+    runtime: Literal["nodejs22", "python3.13"]
+
+
+class DeployFunctionSettings(_DeployFunctionSettingsRequired, total=False):
+    # What to call: `file.export` for Node.js (default `index.handler`) or `module.function` for
+    # Python (default `main.handler`).
+    handler: str
+    # Memory per instance, in MiB.
+    memory_mib: int
+    # How long one request may run.
+    timeout_seconds: int
+    # Environment variables, at most 4 KiB in all.
+    environment: List[FunctionEnvironmentVariable]
+
+
+class FunctionDeployment(TypedDict):
+    """A deploy that was accepted: the new version, and the operation building it."""
+
+    # The build. Poll `GET /public/v1/operations/{operation_id}` (also the `Location` header)
+    # until it is `succeeded` or `failed`.
+    operation_id: str
+    # The operation's status when accepted, usually `submitting`.
+    status: str
+    version: FunctionVersion
+
+
+class FunctionEnvironmentVariable(TypedDict):
+    # Letters, digits and underscores, not starting with a digit or `PANTECH_`.
+    name: str
+    # The value. Empty when reading a secret variable: secret values are never returned.
+    value: str
+    # Stored encrypted and never returned.
+    secret: bool
+
+
+class FunctionKeyList(TypedDict):
+    data: List[FunctionKey]
+
+
+class FunctionList(TypedDict):
+    data: List[Function]
+
+
+class FunctionVersion(TypedDict):
+    """One deploy of a function's code and settings."""
+
+    # The version's id, starting `fnv_`.
+    id: str
+    # The function.
+    function_id: str
+    # 1 for the first deploy, then 2, 3, …
+    number: int
+    # The language runtime.
+    runtime: Literal["nodejs22", "python3.13"]
+    # What is called on each request.
+    handler: str
+    # Memory per instance, in MiB.
+    memory_mib: int
+    # How long one request may run.
+    timeout_seconds: int
+    # Its environment variables; secret ones without their values.
+    environment: List[FunctionEnvironmentVariable]
+    # The SHA-256 of the zip that was deployed, in hex.
+    code_sha256: str
+    # `building`, then `ready` (it can serve) or `failed`.
+    state: Literal["building", "ready", "failed"]
+    # Why the build failed; null otherwise.
+    failure_reason: Optional[str]
+    # It is the version serving.
+    active: bool
+    # When it was deployed.
+    created_at: str
+    # When its build finished; null while building.
+    finished_at: Optional[str]
+
+
+class FunctionVersionList(TypedDict):
+    data: List[FunctionVersion]
+
+
+class UpdateFunctionRequest(TypedDict, total=False):
+    # `key` or `public`.
+    auth: Literal["key", "public"]
+    # The most requests it serves at once.
+    max_concurrency: int
 
 
 class UpdateLoadBalancerRequest(TypedDict, total=False):
@@ -1116,9 +1336,16 @@ class CreateDatabaseRequest(_CreateDatabaseRequestRequired, total=False):
     password: str
     # Data disk size in GB.
     storage_gb: int
+    # Start the new database from this snapshot of one of your databases, instead of empty.
+    source_snapshot_id: str
 
 
-class Database(TypedDict):
+class DatabaseCACertificate(TypedDict):
+    # The root certificate, PEM.
+    certificate_pem: str
+
+
+class _DatabaseRequired(TypedDict):
     # The admin login to connect as: the one chosen at create, or `dbadmin`.
     admin_username: str
     # Your security groups attached to the database, in the order attached (at most 5).
@@ -1171,6 +1398,12 @@ class Database(TypedDict):
     created_at: Optional[str]
     # When it last changed (RFC 3339, UTC).
     updated_at: Optional[str]
+
+
+class Database(_DatabaseRequired, total=False):
+    # True when the database refuses plaintext connections and presents a certificate for its
+    # hostname that chains to *Get the database CA certificate*.
+    tls_required: bool
 
 
 class DatabaseAccessRule(TypedDict):
@@ -2261,6 +2494,9 @@ class SnapshotSchedule(_SnapshotScheduleRequired, total=False):
     instance_id: Optional[str]
     # The volume snapshotted; null for an instance's schedule.
     volume_id: Optional[str]
+    # The database whose data disk is snapshotted; null for an instance's or a volume's
+    # schedule.
+    database_id: Optional[str]
     # When the next automatic snapshot is due; null while paused.
     next_run_at: Optional[str]
 

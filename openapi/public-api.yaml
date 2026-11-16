@@ -50,6 +50,8 @@ tags:
     description: "Spread traffic on one public port across several instances in a private network."
   - name: Kubernetes
     description: "Managed Kubernetes clusters whose nodes are VMs in your account."
+  - name: Functions
+    description: "Code that runs on each request to its own URL, billed per request and run time."
   - name: Security groups
     description: Reusable firewalls for standard instances.
   - name: Volumes
@@ -560,6 +562,58 @@ paths:
           $ref: "#/components/responses/RateLimited"
         503:
           $ref: "#/components/responses/QuotaUnavailable"
+  /public/v1/database-ca-certificate:
+    get:
+      tags:
+        - Databases
+      summary: Get the database CA certificate
+      description: |-
+        The root certificate to verify a managed database against. A database with `tls_required` true presents a certificate for its hostname that chains to this root. It is public, and the same for every database.
+
+        **Scope:** `read`.
+      operationId: getDatabaseCACertificate
+      security:
+        - apiKey: []
+      x-scope: read
+      x-order: 179
+      responses:
+        200:
+          description: The certificate.
+          headers:
+            RateLimit-Limit:
+              description: Requests allowed per window for this key.
+              schema:
+                type: integer
+            RateLimit-Remaining:
+              description: Requests left in this window.
+              schema:
+                type: integer
+            RateLimit-Reset:
+              description: Seconds until the window resets.
+              schema:
+                type: integer
+            X-Request-Id:
+              description: "This request's id."
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatabaseCACertificate"
+        401:
+          $ref: "#/components/responses/Unauthenticated"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          description: "`DATABASE_CA_CERTIFICATE_UNAVAILABLE`: no database CA certificate is available."
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        503:
+          $ref: "#/components/responses/QuotaUnavailable"
   /public/v1/database-orders:
     get:
       tags:
@@ -864,6 +918,8 @@ paths:
             `version` `INVALID_DATABASE_VERSION`: the version line is not offered for new databases. Pick one from `GET /public/v1/database-engines`.
             `zone_id` `INVALID_DATABASE_ZONE`: the zone is missing or not one your organization can use. Pick one from `GET /public/v1/regions`.
             `zone_id` `DATABASE_VERSION_NOT_AVAILABLE_IN_ZONE`: this version is not offered in this zone yet. Pick a zone from the version's `zones`.
+            `source_snapshot_id` `DATABASE_RESTORE_SNAPSHOT_NOT_USABLE`: no finished snapshot of one of your databases has this id. Pick one from the database's snapshots.
+            `source_snapshot_id` `DATABASE_RESTORE_MISMATCH`: `engine`, `version`, `zone_id`, `admin_username` or `storage_gb` differs from the database the snapshot was taken from. Send the source's values, or omit `admin_username` and `storage_gb`.
             `plan_slug` `PLAN_NOT_FOUND`: no active plan has this slug. Pick one from `GET /public/v1/plans`.
             `subnet_id` `DATABASE_SUBNET_REQUIRED`: a VPC zone needs a subnet. Send the `subnet_id` of one of your subnets in that zone.
             `subnet_id` `DATABASE_SUBNET_NOT_ALLOWED`: a standard zone takes no subnet. Leave out `subnet_id`.
@@ -887,6 +943,7 @@ paths:
           description: |-
             `SERVICE_UNAVAILABLE`: request quota storage is unavailable. Wait a few seconds, then retry.
             `DATABASES_UNAVAILABLE`: managed databases are not available on this platform yet. Try again later, or contact support.
+            `DATABASE_RESTORE_UNAVAILABLE`: restoring a database of this engine is not available yet. Create an empty database instead.
             `DATABASE_STORAGE_UNAVAILABLE`: database storage is not offered in this zone yet. Choose another zone, or try again later.
             `DATABASE_HOSTNAME_UNAVAILABLE`: a hostname could not be reserved for the database. Retry with a new `Idempotency-Key`.
             `BILLING_UNAVAILABLE`: billing is not answering right now. Wait a few seconds, then retry.
@@ -5480,6 +5537,931 @@ paths:
             "application/problem+json":
               schema:
                 $ref: "#/components/schemas/Problem"
+  /public/v1/functions:
+    get:
+      tags:
+        - Functions
+      summary: List functions
+      description: |-
+        Your organization's functions, each with the URL it answers on.
+
+        **Scope:** `read`.
+      operationId: listFunctions
+      security:
+        - apiKey: []
+      x-scope: read
+      x-order: 168
+      responses:
+        200:
+          description: Functions.
+          headers:
+            RateLimit-Limit:
+              description: Requests allowed per window for this key.
+              schema:
+                type: integer
+            RateLimit-Remaining:
+              description: Requests left in this window.
+              schema:
+                type: integer
+            RateLimit-Reset:
+              description: Seconds until the window resets.
+              schema:
+                type: integer
+            X-Request-Id:
+              description: "This request's id."
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FunctionList"
+        401:
+          $ref: "#/components/responses/Unauthenticated"
+        403:
+          description: |-
+            `INSUFFICIENT_SCOPE`: the API key lacks the scope this endpoint needs. Use a key with that scope.
+            `FORBIDDEN`: the member who created the key may not do this in the organization. Use a key created by an owner or admin.
+            `AI_APPS_DISABLED`: the organization has turned AI app access off. An owner can turn it on in the console under Organization › AI apps.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        503:
+          $ref: "#/components/responses/QuotaUnavailable"
+    post:
+      tags:
+        - Functions
+      summary: Create a function
+      description: |-
+        Creates a function and gives it its URL at once. It serves nothing until its first deploy succeeds. Returns `201` with the function; there is no operation to follow.
+
+        `auth` is `key` (the default: callers send one of the function's keys in the `Authorization` header) or `public` (anyone with the URL may call it).
+
+        **Idempotency:** a retry with the same `Idempotency-Key` and body returns the function the first attempt created.
+
+        **Scope:** `write`.
+      operationId: createFunction
+      security:
+        - apiKey: []
+      x-scope: write
+      x-order: 169
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFunctionRequest"
+      responses:
+        201:
+          description: The function.
+          headers:
+            RateLimit-Limit:
+              description: Requests allowed per window for this key.
+              schema:
+                type: integer
+            RateLimit-Remaining:
+              description: Requests left in this window.
+              schema:
+                type: integer
+            RateLimit-Reset:
+              description: Seconds until the window resets.
+              schema:
+                type: integer
+            X-Request-Id:
+              description: "This request's id."
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedFunction"
+        400:
+          description: |-
+            `IDEMPOTENCY_KEY_REQUIRED`: the `Idempotency-Key` header is missing. Send a new unique value, such as a UUID, with every write.
+            `INVALID_IDEMPOTENCY_KEY`: the `Idempotency-Key` header is longer than 255 characters. Use a shorter value.
+            `INVALID_REQUEST_BODY`: the body is not a single valid JSON object. Send one JSON object with the fields documented for this endpoint.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        401:
+          $ref: "#/components/responses/Unauthenticated"
+        403:
+          description: |-
+            `INSUFFICIENT_SCOPE`: the API key lacks the scope this endpoint needs. Use a key with that scope.
+            `FORBIDDEN`: the member who created the key may not do this in the organization. Use a key created by an owner or admin.
+            `AI_APPS_DISABLED`: the organization has turned AI app access off. An owner can turn it on in the console under Organization › AI apps.
+            `FUNCTIONS_UNAVAILABLE`: functions are in preview and not available to this organization yet.
+            `FUNCTION_LIMIT_REACHED`: the organization already has the most functions allowed. Delete one, or contact support to raise the limit.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        409:
+          description: |-
+            `FUNCTION_NAME_TAKEN`: a function with that name already exists in this zone. Choose a different name.
+            `IDEMPOTENCY_CONFLICT`: this `Idempotency-Key` was already used for a different request. Use a new key.
+            `ACCOUNT_SUSPENDED`: the account has an overdue invoice. Pay it under Billing in the console, then try again.
+            `ACCOUNT_NOT_ACTIVE`: billing setup is not finished. Finish it under Billing in the console, then try again.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        422:
+          description: |-
+            `VALIDATION_FAILED`: a field is invalid. Each entry of `errors` names the `field` and its `code`:
+            `name` `REQUIRED` or `INVALID`: use 1 to 63 lowercase letters, digits and hyphens, starting with a letter.
+            `zone_id` `REQUIRED`: send a zone, such as `af-abj-2`.
+            `auth` `INVALID`: use `public` or `key`.
+            `max_concurrency` `INVALID`: use a number from 1 to the organization's limit.
+            `FUNCTION_ZONE_UNAVAILABLE`: functions are not offered in this zone. Choose another zone.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        503:
+          $ref: "#/components/responses/QuotaUnavailable"
+  /public/v1/functions/{function_id}:
+    get:
+      tags:
+        - Functions
+      summary: Get a function
+      description: |-
+        One function.
+
+        **Scope:** `read`.
+      operationId: getFunction
+      security:
+        - apiKey: []
+      x-scope: read
+      x-order: 170
+      parameters:
+        - name: function_id
+          in: path
+          required: true
+          description: "The function's id."
+          schema:
+            type: string
+      responses:
+        200:
+          description: The function.
+          headers:
+            RateLimit-Limit:
+              description: Requests allowed per window for this key.
+              schema:
+                type: integer
+            RateLimit-Remaining:
+              description: Requests left in this window.
+              schema:
+                type: integer
+            RateLimit-Reset:
+              description: Seconds until the window resets.
+              schema:
+                type: integer
+            X-Request-Id:
+              description: "This request's id."
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Function"
+        401:
+          $ref: "#/components/responses/Unauthenticated"
+        403:
+          description: |-
+            `INSUFFICIENT_SCOPE`: the API key lacks the scope this endpoint needs. Use a key with that scope.
+            `FORBIDDEN`: the member who created the key may not do this in the organization. Use a key created by an owner or admin.
+            `AI_APPS_DISABLED`: the organization has turned AI app access off. An owner can turn it on in the console under Organization › AI apps.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        404:
+          description: |-
+            `NOT_FOUND`: no function with this id exists in your organization. List your functions to find it.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        503:
+          $ref: "#/components/responses/QuotaUnavailable"
+    patch:
+      tags:
+        - Functions
+      summary: Change a function
+      description: |-
+        Changes who may call the function (`auth`) and how many requests it serves at once (`max_concurrency`). Send either or both; the change applies to new requests within seconds.
+
+        **Scope:** `write`.
+      operationId: updateFunction
+      security:
+        - apiKey: []
+      x-scope: write
+      x-order: 171
+      parameters:
+        - name: function_id
+          in: path
+          required: true
+          description: "The function's id."
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateFunctionRequest"
+      responses:
+        200:
+          description: The function.
+          headers:
+            RateLimit-Limit:
+              description: Requests allowed per window for this key.
+              schema:
+                type: integer
+            RateLimit-Remaining:
+              description: Requests left in this window.
+              schema:
+                type: integer
+            RateLimit-Reset:
+              description: Seconds until the window resets.
+              schema:
+                type: integer
+            X-Request-Id:
+              description: "This request's id."
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Function"
+        400:
+          description: |-
+            `IDEMPOTENCY_KEY_REQUIRED`: the `Idempotency-Key` header is missing. Send a new unique value, such as a UUID, with every write.
+            `INVALID_IDEMPOTENCY_KEY`: the `Idempotency-Key` header is longer than 255 characters. Use a shorter value.
+            `INVALID_REQUEST_BODY`: the body is not a single valid JSON object. Send one JSON object with the fields documented for this endpoint.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        401:
+          $ref: "#/components/responses/Unauthenticated"
+        403:
+          description: |-
+            `INSUFFICIENT_SCOPE`: the API key lacks the scope this endpoint needs. Use a key with that scope.
+            `FORBIDDEN`: the member who created the key may not do this in the organization. Use a key created by an owner or admin.
+            `AI_APPS_DISABLED`: the organization has turned AI app access off. An owner can turn it on in the console under Organization › AI apps.
+            `FUNCTIONS_UNAVAILABLE`: functions are in preview and not available to this organization yet.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        404:
+          description: |-
+            `NOT_FOUND`: no function with this id exists in your organization. List your functions to find it.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        409:
+          description: |-
+            `FUNCTION_DELETED`: the function has been deleted.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        422:
+          description: |-
+            `VALIDATION_FAILED`: `auth` must be `public` or `key`, and `max_concurrency` from 1 to the organization's limit; send at least one of them.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        503:
+          $ref: "#/components/responses/QuotaUnavailable"
+    delete:
+      tags:
+        - Functions
+      summary: Delete a function
+      description: |-
+        Deletes the function: its URL stops answering at once and its keys stop working. Its versions and code are removed in the background. Works even when functions are switched off for your organization.
+
+        **Scope:** `write` (an AI app's key also needs `delete`).
+      operationId: deleteFunction
+      security:
+        - apiKey: []
+      x-scope: write
+      x-destructive: true
+      x-order: 172
+      parameters:
+        - name: function_id
+          in: path
+          required: true
+          description: "The function's id."
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        202:
+          description: The delete was accepted.
+          headers:
+            RateLimit-Limit:
+              description: Requests allowed per window for this key.
+              schema:
+                type: integer
+            RateLimit-Remaining:
+              description: Requests left in this window.
+              schema:
+                type: integer
+            RateLimit-Reset:
+              description: Seconds until the window resets.
+              schema:
+                type: integer
+            X-Request-Id:
+              description: "This request's id."
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Accepted"
+        400:
+          description: |-
+            `IDEMPOTENCY_KEY_REQUIRED`: the `Idempotency-Key` header is missing. Send a new unique value, such as a UUID, with every write.
+            `INVALID_IDEMPOTENCY_KEY`: the `Idempotency-Key` header is longer than 255 characters. Use a shorter value.
+            `INVALID_REQUEST_BODY`: the body is not a single valid JSON object. Send one JSON object with the fields documented for this endpoint.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        401:
+          $ref: "#/components/responses/Unauthenticated"
+        403:
+          description: |-
+            `INSUFFICIENT_SCOPE`: the API key lacks the scope this endpoint needs. Use a key with that scope.
+            `FORBIDDEN`: the member who created the key may not do this in the organization. Use a key created by an owner or admin.
+            `AI_APPS_DISABLED`: the organization has turned AI app access off. An owner can turn it on in the console under Organization › AI apps.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        404:
+          description: |-
+            `NOT_FOUND`: no function with this id exists in your organization. List your functions to find it.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        503:
+          $ref: "#/components/responses/QuotaUnavailable"
+  /public/v1/functions/{function_id}/deploy:
+    post:
+      tags:
+        - Functions
+      summary: Deploy a function
+      description: |-
+        Builds a new version from your code. The version is numbered, starts `building`, and serves once its build succeeds; follow `operation_id` until it finishes. The version that was serving keeps serving until then, and if the build fails.
+
+        Send the code one of two ways:
+
+        - **One file:** a JSON body with `source.filename` (such as `index.mjs` or `main.py`) and `source.content`, at most 256 KiB.
+        - **A zip:** `multipart/form-data` with a `spec` part holding the same JSON without `source`, then a `code` part holding the zip, at most 25 MiB zipped and 250 MiB unpacked. Only files and folders; no links and no paths outside the zip.
+
+        Environment variables marked `secret` are stored encrypted and never returned: reading a version shows their names only.
+
+        **Idempotency:** a retry with the same `Idempotency-Key` returns the version the first attempt created.
+
+        **Scope:** `write`.
+      operationId: deployFunction
+      security:
+        - apiKey: []
+      x-scope: write
+      x-order: 173
+      parameters:
+        - name: function_id
+          in: path
+          required: true
+          description: "The function's id."
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeployFunctionRequest"
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/DeployFunctionMultipart"
+      responses:
+        202:
+          description: The deploy was accepted.
+          headers:
+            RateLimit-Limit:
+              description: Requests allowed per window for this key.
+              schema:
+                type: integer
+            RateLimit-Remaining:
+              description: Requests left in this window.
+              schema:
+                type: integer
+            RateLimit-Reset:
+              description: Seconds until the window resets.
+              schema:
+                type: integer
+            X-Request-Id:
+              description: "This request's id."
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FunctionDeployment"
+        400:
+          description: |-
+            `IDEMPOTENCY_KEY_REQUIRED`: the `Idempotency-Key` header is missing. Send a new unique value, such as a UUID, with every write.
+            `INVALID_IDEMPOTENCY_KEY`: the `Idempotency-Key` header is longer than 255 characters. Use a shorter value.
+            `INVALID_REQUEST_BODY`: the body is not a single valid JSON object. Send one JSON object with the fields documented for this endpoint.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        401:
+          $ref: "#/components/responses/Unauthenticated"
+        403:
+          description: |-
+            `INSUFFICIENT_SCOPE`: the API key lacks the scope this endpoint needs. Use a key with that scope.
+            `FORBIDDEN`: the member who created the key may not do this in the organization. Use a key created by an owner or admin.
+            `AI_APPS_DISABLED`: the organization has turned AI app access off. An owner can turn it on in the console under Organization › AI apps.
+            `FUNCTIONS_UNAVAILABLE`: functions are in preview and not available to this organization yet.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        404:
+          description: |-
+            `NOT_FOUND`: no function with this id exists in your organization. List your functions to find it.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        409:
+          description: |-
+            `FUNCTION_DELETED`: the function has been deleted.
+            `IDEMPOTENCY_CONFLICT`: this `Idempotency-Key` was already used for a different request. Use a new key.
+            `ACCOUNT_SUSPENDED`: the account has an overdue invoice. Pay it under Billing in the console, then try again.
+            `ACCOUNT_NOT_ACTIVE`: billing setup is not finished. Finish it under Billing in the console, then try again.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        413:
+          description: |-
+            `FUNCTION_CODE_TOO_LARGE`: the code is over 25 MiB zipped or 250 MiB unpacked. Remove what the function does not need, such as tests and build tools.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        422:
+          description: |-
+            `VALIDATION_FAILED`: a field is invalid. Each entry of `errors` names the `field` and its `code`:
+            `runtime` `REQUIRED` or `INVALID`: use `nodejs22` or `python3.13`.
+            `handler` `INVALID`: use `file.export` for Node.js or `module.function` for Python.
+            `memory_mib` `INVALID`: use 128, 256, 512, 1024 or 2048.
+            `timeout_seconds` `INVALID`: use 1 to 900.
+            `environment` `INVALID`: names are letters, digits and underscores, not starting `PANTECH_`, with at most 4 KiB in all.
+            `source` `INVALID_FUNCTION_SOURCE`: a file name with no folders, and content of at most 256 KiB.
+            `code` `FUNCTION_CODE_REQUIRED`: send a zip as the `code` part, or a single file as `source`.
+            `FUNCTION_CODE_INVALID`: the zip is not a zip of plain files and folders.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        503:
+          $ref: "#/components/responses/QuotaUnavailable"
+  /public/v1/functions/{function_id}/keys:
+    get:
+      tags:
+        - Functions
+      summary: List a function's keys
+      description: |-
+        The keys a `key` function is called with. A key itself is shown only when it is created; this list shows its last four characters as `hint`.
+
+        **Scope:** `read`.
+      operationId: listFunctionKeys
+      security:
+        - apiKey: []
+      x-scope: read
+      x-order: 174
+      parameters:
+        - name: function_id
+          in: path
+          required: true
+          description: "The function's id."
+          schema:
+            type: string
+      responses:
+        200:
+          description: Keys.
+          headers:
+            RateLimit-Limit:
+              description: Requests allowed per window for this key.
+              schema:
+                type: integer
+            RateLimit-Remaining:
+              description: Requests left in this window.
+              schema:
+                type: integer
+            RateLimit-Reset:
+              description: Seconds until the window resets.
+              schema:
+                type: integer
+            X-Request-Id:
+              description: "This request's id."
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FunctionKeyList"
+        401:
+          $ref: "#/components/responses/Unauthenticated"
+        403:
+          description: |-
+            `INSUFFICIENT_SCOPE`: the API key lacks the scope this endpoint needs. Use a key with that scope.
+            `FORBIDDEN`: the member who created the key may not do this in the organization. Use a key created by an owner or admin.
+            `AI_APPS_DISABLED`: the organization has turned AI app access off. An owner can turn it on in the console under Organization › AI apps.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        404:
+          description: |-
+            `NOT_FOUND`: no function with this id exists in your organization. List your functions to find it.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        503:
+          $ref: "#/components/responses/QuotaUnavailable"
+    post:
+      tags:
+        - Functions
+      summary: Create a function key
+      description: |-
+        Creates a key callers send as `Authorization: Bearer <key>`. The key is in this response only and is never shown again; store it now. A function has at most 10 keys that are not revoked.
+
+        **Idempotency:** a retry with the same `Idempotency-Key` is not replayed: it creates another key. If a request may have gone through, list the keys and revoke one you did not receive.
+
+        **Scope:** `write`.
+      operationId: createFunctionKey
+      security:
+        - apiKey: []
+      x-scope: write
+      x-order: 175
+      parameters:
+        - name: function_id
+          in: path
+          required: true
+          description: "The function's id."
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFunctionKeyRequest"
+      responses:
+        201:
+          description: The key, with the key itself.
+          headers:
+            RateLimit-Limit:
+              description: Requests allowed per window for this key.
+              schema:
+                type: integer
+            RateLimit-Remaining:
+              description: Requests left in this window.
+              schema:
+                type: integer
+            RateLimit-Reset:
+              description: Seconds until the window resets.
+              schema:
+                type: integer
+            X-Request-Id:
+              description: "This request's id."
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedFunctionKey"
+        400:
+          description: |-
+            `IDEMPOTENCY_KEY_REQUIRED`: the `Idempotency-Key` header is missing. Send a new unique value, such as a UUID, with every write.
+            `INVALID_IDEMPOTENCY_KEY`: the `Idempotency-Key` header is longer than 255 characters. Use a shorter value.
+            `INVALID_REQUEST_BODY`: the body is not a single valid JSON object. Send one JSON object with the fields documented for this endpoint.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        401:
+          $ref: "#/components/responses/Unauthenticated"
+        403:
+          description: |-
+            `INSUFFICIENT_SCOPE`: the API key lacks the scope this endpoint needs. Use a key with that scope.
+            `FORBIDDEN`: the member who created the key may not do this in the organization. Use a key created by an owner or admin.
+            `AI_APPS_DISABLED`: the organization has turned AI app access off. An owner can turn it on in the console under Organization › AI apps.
+            `FUNCTIONS_UNAVAILABLE`: functions are in preview and not available to this organization yet.
+            `FUNCTION_KEY_LIMIT_REACHED`: the function already has 10 keys. Revoke one first.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        404:
+          description: |-
+            `NOT_FOUND`: no function with this id exists in your organization. List your functions to find it.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        422:
+          description: |-
+            `VALIDATION_FAILED`: `name` must be 1 to 63 lowercase letters, digits and hyphens, starting with a letter.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        503:
+          $ref: "#/components/responses/QuotaUnavailable"
+  /public/v1/functions/{function_id}/keys/{key_id}:
+    delete:
+      tags:
+        - Functions
+      summary: Revoke a function key
+      description: |-
+        The key stops working within seconds. Revoked keys stay listed with `revoked_at`. Works even when functions are switched off for your organization.
+
+        **Scope:** `write` (an AI app's key also needs `delete`).
+      operationId: revokeFunctionKey
+      security:
+        - apiKey: []
+      x-scope: write
+      x-destructive: true
+      x-order: 176
+      parameters:
+        - name: function_id
+          in: path
+          required: true
+          description: "The function's id."
+          schema:
+            type: string
+        - name: key_id
+          in: path
+          required: true
+          description: "The key's id."
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        200:
+          description: The revoked key.
+          headers:
+            RateLimit-Limit:
+              description: Requests allowed per window for this key.
+              schema:
+                type: integer
+            RateLimit-Remaining:
+              description: Requests left in this window.
+              schema:
+                type: integer
+            RateLimit-Reset:
+              description: Seconds until the window resets.
+              schema:
+                type: integer
+            X-Request-Id:
+              description: "This request's id."
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FunctionKey"
+        400:
+          description: |-
+            `IDEMPOTENCY_KEY_REQUIRED`: the `Idempotency-Key` header is missing. Send a new unique value, such as a UUID, with every write.
+            `INVALID_IDEMPOTENCY_KEY`: the `Idempotency-Key` header is longer than 255 characters. Use a shorter value.
+            `INVALID_REQUEST_BODY`: the body is not a single valid JSON object. Send one JSON object with the fields documented for this endpoint.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        401:
+          $ref: "#/components/responses/Unauthenticated"
+        403:
+          description: |-
+            `INSUFFICIENT_SCOPE`: the API key lacks the scope this endpoint needs. Use a key with that scope.
+            `FORBIDDEN`: the member who created the key may not do this in the organization. Use a key created by an owner or admin.
+            `AI_APPS_DISABLED`: the organization has turned AI app access off. An owner can turn it on in the console under Organization › AI apps.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        404:
+          description: |-
+            `NOT_FOUND`: no function with this id exists in your organization. List your functions to find it.
+            `FUNCTION_KEY_NOT_FOUND`: the function has no key with this id.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        503:
+          $ref: "#/components/responses/QuotaUnavailable"
+  /public/v1/functions/{function_id}/versions:
+    get:
+      tags:
+        - Functions
+      summary: List a function's versions
+      description: |-
+        Every version deployed, newest first, with its build state. `active` marks the one serving.
+
+        **Scope:** `read`.
+      operationId: listFunctionVersions
+      security:
+        - apiKey: []
+      x-scope: read
+      x-order: 177
+      parameters:
+        - name: function_id
+          in: path
+          required: true
+          description: "The function's id."
+          schema:
+            type: string
+      responses:
+        200:
+          description: Versions.
+          headers:
+            RateLimit-Limit:
+              description: Requests allowed per window for this key.
+              schema:
+                type: integer
+            RateLimit-Remaining:
+              description: Requests left in this window.
+              schema:
+                type: integer
+            RateLimit-Reset:
+              description: Seconds until the window resets.
+              schema:
+                type: integer
+            X-Request-Id:
+              description: "This request's id."
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FunctionVersionList"
+        401:
+          $ref: "#/components/responses/Unauthenticated"
+        403:
+          description: |-
+            `INSUFFICIENT_SCOPE`: the API key lacks the scope this endpoint needs. Use a key with that scope.
+            `FORBIDDEN`: the member who created the key may not do this in the organization. Use a key created by an owner or admin.
+            `AI_APPS_DISABLED`: the organization has turned AI app access off. An owner can turn it on in the console under Organization › AI apps.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        404:
+          description: |-
+            `NOT_FOUND`: no function with this id exists in your organization. List your functions to find it.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        503:
+          $ref: "#/components/responses/QuotaUnavailable"
+  /public/v1/functions/{function_id}/versions/{number}/activate:
+    post:
+      tags:
+        - Functions
+      summary: Serve a version
+      description: |-
+        Makes this version the one that serves: a rollback to an earlier version, or forward again. Only a version whose build succeeded can serve. New requests reach it within seconds.
+
+        **Scope:** `write`.
+      operationId: activateFunctionVersion
+      security:
+        - apiKey: []
+      x-scope: write
+      x-order: 178
+      parameters:
+        - name: function_id
+          in: path
+          required: true
+          description: "The function's id."
+          schema:
+            type: string
+        - name: number
+          in: path
+          required: true
+          description: "The version number: 1 for the first deploy, then 2, 3, …"
+          schema:
+            type: integer
+            minimum: 1
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        200:
+          description: The function.
+          headers:
+            RateLimit-Limit:
+              description: Requests allowed per window for this key.
+              schema:
+                type: integer
+            RateLimit-Remaining:
+              description: Requests left in this window.
+              schema:
+                type: integer
+            RateLimit-Reset:
+              description: Seconds until the window resets.
+              schema:
+                type: integer
+            X-Request-Id:
+              description: "This request's id."
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Function"
+        400:
+          description: |-
+            `IDEMPOTENCY_KEY_REQUIRED`: the `Idempotency-Key` header is missing. Send a new unique value, such as a UUID, with every write.
+            `INVALID_IDEMPOTENCY_KEY`: the `Idempotency-Key` header is longer than 255 characters. Use a shorter value.
+            `INVALID_REQUEST_BODY`: the body is not a single valid JSON object. Send one JSON object with the fields documented for this endpoint.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        401:
+          $ref: "#/components/responses/Unauthenticated"
+        403:
+          description: |-
+            `INSUFFICIENT_SCOPE`: the API key lacks the scope this endpoint needs. Use a key with that scope.
+            `FORBIDDEN`: the member who created the key may not do this in the organization. Use a key created by an owner or admin.
+            `AI_APPS_DISABLED`: the organization has turned AI app access off. An owner can turn it on in the console under Organization › AI apps.
+            `FUNCTIONS_UNAVAILABLE`: functions are in preview and not available to this organization yet.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        404:
+          description: |-
+            `NOT_FOUND`: no function with this id exists in your organization. List your functions to find it.
+            `FUNCTION_VERSION_NOT_FOUND`: the function has no version with this number.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        409:
+          description: |-
+            `FUNCTION_VERSION_NOT_READY`: only a version whose build succeeded can serve.
+            `FUNCTION_DELETED`: the function has been deleted.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        503:
+          $ref: "#/components/responses/QuotaUnavailable"
   /public/v1/images:
     get:
       tags:
@@ -9740,7 +10722,7 @@ paths:
             `INSUFFICIENT_SCOPE`: this API key has only the `read` scope. Use a key with `write` access.
             `FORBIDDEN`: the member who created this key may not do this in the organization, or has left it. Use a key created by an owner or admin.
             `AI_APPS_DISABLED`: the organization has turned AI app access off, and this request was made with an AI app's key or sent by Pantech's MCP server. An owner can turn it on in the console under Organization › AI apps.
-            `STATIC_NAT_LIMIT_EXCEEDED`: your organization has reached its limit of static NAT public IPs. Release one you no longer need, or contact support for a higher limit.
+            `STATIC_NAT_LIMIT_EXCEEDED`: your organization has reached its limit of static NAT public IPs, counted across all its projects (5 by default). Release one you no longer need, or contact support for a higher limit.
             `PUBLIC_IP_LIMIT_EXCEEDED`: your organization has reached its limit of public IPs of any purpose (20 by default). Release one you no longer need, or contact support for a higher limit.
           content:
             "application/problem+json":
@@ -11899,7 +12881,7 @@ paths:
 
         Public routing needs a cluster in a VPC subnet: it uses the VPC's public address. Port 22 and the cluster's API port are reserved.
 
-        Errors: `404 KUBERNETES_CLUSTER_NOT_FOUND`; `404 KUBERNETES_SERVICE_NOT_FOUND` (apply the Service first); `409 PORT_IN_USE` (another service, cluster or resource uses that public port; choose another); `409 KUBERNETES_ROUTING_UNAVAILABLE` (a cluster with no VPC address); `409 IP_POOL_EXHAUSTED` (no public address is free in the zone; try again later); `409 KUBERNETES_CLUSTER_NOT_RUNNING`; `422 VALIDATION_FAILED` (`service_name`, `public_port` or `node_port`; or `INVALID_KUBERNETES_MANIFEST` when the cluster refused the change); `503 KUBERNETES_API_UNREACHABLE` (retry).
+        Errors: `404 KUBERNETES_CLUSTER_NOT_FOUND`; `404 KUBERNETES_SERVICE_NOT_FOUND` (apply the Service first); `409 PORT_IN_USE` (another service, cluster or resource uses that public port; choose another); `409 KUBERNETES_ROUTING_UNAVAILABLE` (a cluster with no VPC address); `409 KUBERNETES_CLUSTER_NOT_RUNNING`; `422 VALIDATION_FAILED` (`service_name`, `public_port` or `node_port`; or `INVALID_KUBERNETES_MANIFEST` when the cluster refused the change); `503 PUBLIC_IP_UNAVAILABLE` (a public IP address could not be attached; try again later); `503 KUBERNETES_API_UNREACHABLE` (retry).
       operationId: exposeKubernetesService
       security:
         - apiKey: []
@@ -11952,7 +12934,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "409":
-          description: "`PORT_IN_USE`, `KUBERNETES_ROUTING_UNAVAILABLE`, `IP_POOL_EXHAUSTED` or `KUBERNETES_CLUSTER_NOT_RUNNING`."
+          description: "`PORT_IN_USE`, `KUBERNETES_ROUTING_UNAVAILABLE` or `KUBERNETES_CLUSTER_NOT_RUNNING`."
           content:
             "application/problem+json":
               schema:
@@ -11964,7 +12946,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "503":
-          description: "`KUBERNETES_API_UNREACHABLE`: retry."
+          description: "`PUBLIC_IP_UNAVAILABLE` or `KUBERNETES_API_UNREACHABLE`: retry."
           content:
             "application/problem+json":
               schema:
@@ -11979,7 +12961,7 @@ paths:
 
         Every cluster on a shared address gets its own API port: the first 6443, the next 6444, and so on. A new cluster's API port is routed automatically once it is running; call this after exposing or unexposing services with kubectl. If the API server does not answer, only its own route is ensured and no service route is removed.
 
-        Errors: `404 KUBERNETES_CLUSTER_NOT_FOUND`; `409 PORT_IN_USE`; `409 KUBERNETES_ROUTING_UNAVAILABLE` (a cluster with no VPC address); `409 IP_POOL_EXHAUSTED` (no public address is free in the zone; try again later); `409 KUBERNETES_CLUSTER_NOT_RUNNING`.
+        Errors: `404 KUBERNETES_CLUSTER_NOT_FOUND`; `409 PORT_IN_USE`; `409 KUBERNETES_ROUTING_UNAVAILABLE` (a cluster with no VPC address); `409 KUBERNETES_CLUSTER_NOT_RUNNING`; `503 PUBLIC_IP_UNAVAILABLE` (a public IP address could not be attached; try again later).
       operationId: syncKubernetesRouting
       security:
         - apiKey: []
@@ -12026,7 +13008,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
         "409":
-          description: "`PORT_IN_USE`, `KUBERNETES_ROUTING_UNAVAILABLE`, `IP_POOL_EXHAUSTED` or `KUBERNETES_CLUSTER_NOT_RUNNING`."
+          description: "`PORT_IN_USE`, `KUBERNETES_ROUTING_UNAVAILABLE` or `KUBERNETES_CLUSTER_NOT_RUNNING`."
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: "`PUBLIC_IP_UNAVAILABLE`: retry later."
           content:
             "application/problem+json":
               schema:
@@ -14791,6 +15779,168 @@ paths:
             "application/problem+json":
               schema:
                 $ref: "#/components/schemas/Problem"
+  /public/v1/databases/{database_id}/snapshot-schedule:
+    get:
+      tags:
+        - Snapshots
+      summary: "Get a database's snapshot schedule"
+      description: |-
+        The database's automatic snapshot schedule: how often a snapshot of its data disk is taken, how many are kept, and when the next one runs.
+
+        **Scope:** `read`.
+      operationId: getDatabaseSnapshotSchedule
+      security:
+        - apiKey: []
+      x-scope: read
+      x-order: 72
+      parameters:
+        - name: database_id
+          in: path
+          required: true
+          description: "The resource's id."
+          schema:
+            type: string
+      responses:
+        200:
+          description: The schedule.
+          headers:
+            RateLimit-Limit:
+              description: Requests allowed per window for this key.
+              schema:
+                type: integer
+            RateLimit-Remaining:
+              description: Requests left in this window.
+              schema:
+                type: integer
+            RateLimit-Reset:
+              description: Seconds until the window resets.
+              schema:
+                type: integer
+            X-Request-Id:
+              description: "This request's id."
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SnapshotSchedule"
+        401:
+          $ref: "#/components/responses/Unauthenticated"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          description: |-
+            `RESOURCE_NOT_FOUND`: no database with this id in your organization, or the id is not a database id (`db_…`). Check the id.
+            `SNAPSHOT_SCHEDULE_NOT_FOUND`: no schedule has been set for this resource. Set one with the `PUT` on this path.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        503:
+          $ref: "#/components/responses/QuotaUnavailable"
+    put:
+      tags:
+        - Snapshots
+      summary: "Set a database's snapshot schedule"
+      description: |-
+        Turns automatic snapshots of the database's data disk on, changes them, or pauses them with `enabled: false`. `frequency` is `daily`, `weekly` or `monthly`; `retention_count` (1 to 168, default 7) successful snapshots are kept and older automatic ones are deleted. Automatic snapshots are billed like manual ones.
+
+        Returns the schedule at once (`200`); no operation to follow. Send an `Idempotency-Key`: a retry with the same key and settings returns the same schedule.
+
+        **Scope:** `write`. Lowering `retention_count` deletes the oldest copies, so an AI app's key also needs `delete` for that (`403 INSUFFICIENT_SCOPE` otherwise).
+      operationId: putDatabaseSnapshotSchedule
+      security:
+        - apiKey: []
+      x-scope: write
+      x-order: 73
+      parameters:
+        - name: database_id
+          in: path
+          required: true
+          description: "The resource's id."
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutSnapshotScheduleRequest"
+      responses:
+        200:
+          description: The schedule.
+          headers:
+            RateLimit-Limit:
+              description: Requests allowed per window for this key.
+              schema:
+                type: integer
+            RateLimit-Remaining:
+              description: Requests left in this window.
+              schema:
+                type: integer
+            RateLimit-Reset:
+              description: Seconds until the window resets.
+              schema:
+                type: integer
+            X-Request-Id:
+              description: "This request's id."
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SnapshotSchedule"
+        400:
+          description: |-
+            `IDEMPOTENCY_KEY_REQUIRED`: the `Idempotency-Key` header is missing. Send a new unique value, such as a UUID, with every write.
+            `INVALID_IDEMPOTENCY_KEY`: the `Idempotency-Key` header is longer than 255 characters. Use a shorter value.
+            `INVALID_REQUEST_BODY`: the body is not a single valid JSON object. Send one JSON object with the fields documented for this endpoint.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        401:
+          $ref: "#/components/responses/Unauthenticated"
+        403:
+          $ref: "#/components/responses/Forbidden"
+        404:
+          description: |-
+            `RESOURCE_NOT_FOUND`: no database with this id in your organization, or the id is not a database id (`db_…`). Check the id.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        409:
+          description: |-
+            `IDEMPOTENCY_CONFLICT`: this `Idempotency-Key` was already used with different settings. Use a new key for a different request.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        413:
+          description: |-
+            `REQUEST_TOO_LARGE`: the body is larger than 64 KiB. Send a smaller request.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        422:
+          description: |-
+            `VALIDATION_FAILED`: a field is invalid. Each entry of `errors` names the `field` and its `code`:
+            `frequency` `REQUIRED`: send `daily`, `weekly` or `monthly`.
+            `UNKNOWN_FIELD`: the body has a field this endpoint does not take (named in `field`). Remove it or fix its spelling.
+            `VALIDATION_FAILED` with no `errors` entry: `frequency` is not `daily`, `weekly` or `monthly`, or `retention_count` is outside 1 to 168.
+          content:
+            "application/problem+json":
+              schema:
+                $ref: "#/components/schemas/Problem"
+        429:
+          $ref: "#/components/responses/RateLimited"
+        503:
+          $ref: "#/components/responses/QuotaUnavailable"
   /public/v1/volumes/{volume_id}/snapshot-schedule:
     get:
       tags:
@@ -22839,6 +23989,31 @@ components:
           enum:
             - allow
             - deny
+    CreateFunctionKeyRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: "A name for the key, such as `billing-service`: 1 to 63 lowercase letters, digits and hyphens."
+    CreateFunctionRequest:
+      type: object
+      required: [name, zone_id]
+      properties:
+        name:
+          type: string
+          description: "1 to 63 lowercase letters, digits and hyphens, starting with a letter; unique in its zone."
+        zone_id:
+          type: string
+          description: "The zone the function runs in, such as `af-abj-2`."
+        auth:
+          type: string
+          enum: [key, public]
+          description: "`key` (the default) needs one of the function's keys; `public` lets anyone with the URL call it."
+        max_concurrency:
+          type: integer
+          minimum: 1
+          description: "The most requests it serves at once. Left out, the organization's limit."
     CreateInstanceRequest:
       type: object
       required:
@@ -22996,6 +24171,275 @@ components:
           items:
             type: string
           examples: [["vm_06gk3x9tq7m2v8r4y1c5d0zp8w"]]
+    CreatedFunction:
+      description: "A new function, and the operation that recorded it (already `succeeded`)."
+      allOf:
+        - $ref: "#/components/schemas/Function"
+        - type: object
+          required: [operation_id]
+          properties:
+            operation_id:
+              type: string
+              description: The operation that created the function.
+    CreatedFunctionKey:
+      description: "A new key. `key` is shown only here."
+      allOf:
+        - $ref: "#/components/schemas/FunctionKey"
+        - type: object
+          required: [key]
+          properties:
+            key:
+              type: string
+              description: "The key itself, starting `pfk_`. Callers send it as `Authorization: Bearer <key>`. Store it now: it is never shown again."
+    DeployFunctionMultipart:
+      type: object
+      required: [spec, code]
+      properties:
+        spec:
+          $ref: "#/components/schemas/DeployFunctionSettings"
+        code:
+          type: string
+          format: binary
+          description: "The zip: at most 25 MiB zipped and 250 MiB unpacked, files and folders only."
+    DeployFunctionRequest:
+      type: object
+      description: "A deploy of one inline file."
+      required: [runtime, source]
+      properties:
+        runtime:
+          type: string
+          enum: [nodejs22, python3.13]
+          description: The language runtime.
+        handler:
+          type: string
+          description: "What to call: `file.export` for Node.js (default `index.handler`) or `module.function` for Python (default `main.handler`)."
+        memory_mib:
+          type: integer
+          enum: [128, 256, 512, 1024, 2048]
+          description: "Memory per instance, in MiB. Left out, 128."
+        timeout_seconds:
+          type: integer
+          minimum: 1
+          maximum: 900
+          description: "How long one request may run. Left out, 30."
+        environment:
+          type: array
+          description: "Environment variables, at most 4 KiB in all."
+          items:
+            $ref: "#/components/schemas/FunctionEnvironmentVariable"
+        source:
+          type: object
+          required: [filename, content]
+          description: The single source file.
+          properties:
+            filename:
+              type: string
+              description: "The file's name, such as `index.mjs` or `main.py`, with no folders."
+            content:
+              type: string
+              description: The file's text, at most 256 KiB.
+    DeployFunctionSettings:
+      type: object
+      required: [runtime]
+      properties:
+        runtime:
+          type: string
+          enum: [nodejs22, python3.13]
+          description: The language runtime.
+        handler:
+          type: string
+          description: "What to call: `file.export` for Node.js (default `index.handler`) or `module.function` for Python (default `main.handler`)."
+        memory_mib:
+          type: integer
+          enum: [128, 256, 512, 1024, 2048]
+          description: "Memory per instance, in MiB. Left out, 128."
+        timeout_seconds:
+          type: integer
+          minimum: 1
+          maximum: 900
+          description: "How long one request may run. Left out, 30."
+        environment:
+          type: array
+          description: "Environment variables, at most 4 KiB in all."
+          items:
+            $ref: "#/components/schemas/FunctionEnvironmentVariable"
+    Function:
+      type: object
+      description: "A function: code that runs on each request to its URL."
+      required: [id, name, zone_id, url, auth, max_concurrency, latest_version, active_version, state, created_at]
+      properties:
+        id:
+          type: string
+          description: "The function's id, starting `fn_`."
+        name:
+          type: string
+          description: The function's name.
+        zone_id:
+          type: string
+          description: The zone it runs in.
+        url:
+          type: string
+          description: "Where it answers: `https://<random>.fn.pantechdynamics.com`."
+        auth:
+          type: string
+          enum: [key, public]
+          description: "`key`: callers send one of its keys. `public`: anyone with the URL."
+        max_concurrency:
+          type: integer
+          description: The most requests it serves at once.
+        latest_version:
+          type: integer
+          description: "The newest version's number; 0 before the first deploy."
+        active_version:
+          type: integer
+          description: "The version serving; 0 until a build first succeeds."
+        state:
+          type: string
+          enum: [active, deleted]
+          description: "`active`, or `deleted` once deleted."
+        created_at:
+          type: string
+          format: date-time
+          description: When it was created.
+    FunctionDeployment:
+      type: object
+      description: "A deploy that was accepted: the new version, and the operation building it."
+      required: [operation_id, status, version]
+      properties:
+        operation_id:
+          type: string
+          description: "The build. Poll `GET /public/v1/operations/{operation_id}` (also the `Location` header) until it is `succeeded` or `failed`."
+        status:
+          type: string
+          description: "The operation's status when accepted, usually `submitting`."
+        version:
+          $ref: "#/components/schemas/FunctionVersion"
+    FunctionEnvironmentVariable:
+      type: object
+      required: [name, value, secret]
+      properties:
+        name:
+          type: string
+          description: "Letters, digits and underscores, not starting with a digit or `PANTECH_`."
+        value:
+          type: string
+          description: "The value. Empty when reading a secret variable: secret values are never returned."
+        secret:
+          type: boolean
+          description: "Stored encrypted and never returned."
+    FunctionKey:
+      type: object
+      description: "A key a `key` function is called with, without the key itself."
+      required: [id, function_id, name, hint, created_at, revoked_at]
+      properties:
+        id:
+          type: string
+          description: "The key's id, starting `fnk_`."
+        function_id:
+          type: string
+          description: The function it opens.
+        name:
+          type: string
+          description: The key's name.
+        hint:
+          type: string
+          description: "The key's last four characters, to tell keys apart."
+        created_at:
+          type: string
+          format: date-time
+          description: When it was created.
+        revoked_at:
+          type: [string, "null"]
+          format: date-time
+          description: "When it was revoked; null while it works."
+    FunctionKeyList:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/FunctionKey"
+    FunctionList:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Function"
+    FunctionVersion:
+      type: object
+      description: "One deploy of a function's code and settings."
+      required: [id, function_id, number, runtime, handler, memory_mib, timeout_seconds, environment, code_sha256, state, failure_reason, active, created_at, finished_at]
+      properties:
+        id:
+          type: string
+          description: "The version's id, starting `fnv_`."
+        function_id:
+          type: string
+          description: The function.
+        number:
+          type: integer
+          description: "1 for the first deploy, then 2, 3, …"
+        runtime:
+          type: string
+          enum: [nodejs22, python3.13]
+          description: The language runtime.
+        handler:
+          type: string
+          description: What is called on each request.
+        memory_mib:
+          type: integer
+          description: Memory per instance, in MiB.
+        timeout_seconds:
+          type: integer
+          description: How long one request may run.
+        environment:
+          type: array
+          description: "Its environment variables; secret ones without their values."
+          items:
+            $ref: "#/components/schemas/FunctionEnvironmentVariable"
+        code_sha256:
+          type: string
+          description: "The SHA-256 of the zip that was deployed, in hex."
+        state:
+          type: string
+          enum: [building, ready, failed]
+          description: "`building`, then `ready` (it can serve) or `failed`."
+        failure_reason:
+          type: [string, "null"]
+          description: "Why the build failed; null otherwise."
+        active:
+          type: boolean
+          description: It is the version serving.
+        created_at:
+          type: string
+          format: date-time
+          description: When it was deployed.
+        finished_at:
+          type: [string, "null"]
+          format: date-time
+          description: "When its build finished; null while building."
+    FunctionVersionList:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/FunctionVersion"
+    UpdateFunctionRequest:
+      type: object
+      properties:
+        auth:
+          type: string
+          enum: [key, public]
+          description: "`key` or `public`."
+        max_concurrency:
+          type: integer
+          minimum: 1
+          description: The most requests it serves at once.
     UpdateLoadBalancerRequest:
       type: object
       properties:
@@ -24107,6 +25551,18 @@ components:
           minimum: 1
           description: "Data disk size in GB. Leave out for the plan's `disk_gb`. Otherwise at least the plan's `disk_gb` (or the zone's `min_gb` when larger), at most the zone's `max_gb` (2000 today), and above that base a multiple of the zone's `step_gb` (10 today); the base itself is always allowed. Read the zone's limits and price from `storage` in `GET /public/v1/database-engines` rather than hard-coding them. The upfront payment and the hourly storage price use this size. It can be grown later, never shrunk."
           examples: [100]
+        source_snapshot_id:
+          type: string
+          description: "Start the new database from this snapshot of one of your databases, instead of empty. The snapshot must be finished, and `engine`, `version` and `zone_id` must match the database it was taken from. The data, and every user other than the admin login, are copied as they were at the snapshot; the new database has its own hostname and password, and the original is not touched. `admin_username` and `storage_gb` must be omitted or match the source. The upfront payment is the same as for a new database."
+          examples: [snap_06gk3x9tq7m2v8r4y1c5d0zp8w]
+    DatabaseCACertificate:
+      type: object
+      required:
+        - certificate_pem
+      properties:
+        certificate_pem:
+          type: string
+          description: "The root certificate, PEM."
     Database:
       type: object
       required:
@@ -24135,6 +25591,9 @@ components:
         - effective_access_rules
         - ignored_security_group_rules
       properties:
+        tls_required:
+          type: boolean
+          description: "True when the database refuses plaintext connections and presents a certificate for its hostname that chains to *Get the database CA certificate*."
         admin_username:
           type: string
           description: "The admin login to connect as: the one chosen at create, or `dbadmin`. `pantech_admin` for a database created before the login could be chosen."
@@ -26545,6 +28004,11 @@ components:
             - string
             - "null"
           description: "The volume snapshotted; null for an instance's schedule."
+        database_id:
+          type:
+            - string
+            - "null"
+          description: "The database whose data disk is snapshotted; null for an instance's or a volume's schedule."
         frequency:
           type: string
           description: "`daily`, `weekly` or `monthly`."
