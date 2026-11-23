@@ -247,7 +247,9 @@ except pantech.PaymentRequiredError as err:
 Prices are before VAT. A TLD whose offer has `privacy_always_on: true` (the `.ng` family) has
 privacy protection that cannot be turned off: asking for `privacy=False` is a `422` naming field
 `privacy` with code `PRIVACY_ALWAYS_ON`. `.ng` contacts need `state` and `postal_code`, and
-`name.ng` registrants must be people (`type: "person"`).
+`name.ng` registrants must be people (`type: "person"`). Pass `accept_terms=True` only once the
+registrant has read and accepted the
+[Domain Registration Agreement](https://pantechdynamics.com/legal/domain-registration).
 
 `client.dns.zones.import_zone_file(zone_id, zone_file=..., replace=False)` loads a BIND file.
 `client.domains` also has `list_tlds`, `check_transfer`, `transfer`, `update` (auto-renew, transfer

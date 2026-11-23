@@ -68,6 +68,8 @@ def main() -> int:
                     print(f"  {result['name']:<40} {result['status']:<12} {cost}")
                 # To buy one: client.domains.register(name=..., contact={...}, accept_terms=True),
                 # then client.domains.wait_for_order(result["order"]["id"]). It is paid from credit.
+                # Pass accept_terms only once the registrant has accepted the Domain Registration
+                # Agreement: https://pantechdynamics.com/legal/domain-registration
         except pantech.DNSFailedError as err:
             print(f"{err} ({err.kind}).", file=sys.stderr)
             return 1
