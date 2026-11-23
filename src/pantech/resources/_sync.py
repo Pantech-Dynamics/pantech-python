@@ -9150,7 +9150,8 @@ class DomainsResource(DomainOrderWaiter):
         Args:
           auto_renew: Defaults to false.
           privacy: Defaults to true.
-          accept_terms: Must be true: the registrant accepted the registration agreement.
+          accept_terms: Must be true: the registrant accepted the [Domain Registration
+              Agreement](https://pantechdynamics.com/legal/domain-registration).
         """
         return cast(
             "DomainWithOrder",
@@ -9198,6 +9199,8 @@ class DomainsResource(DomainOrderWaiter):
         Args:
           auth_code: The code from the current registrar.
           privacy: Defaults to true.
+          accept_terms: Must be true: the registrant accepted the [Domain Registration
+              Agreement](https://pantechdynamics.com/legal/domain-registration).
         """
         return cast(
             "DomainWithOrder",

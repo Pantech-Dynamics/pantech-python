@@ -3460,7 +3460,8 @@ class DomainContact(_DomainContactRequired, total=False):
 class _RegisterDomainRequestRequired(TypedDict):
     name: str
     contact: DomainContact
-    # Must be true: the registrant accepted the registration agreement.
+    # Must be true: the registrant accepted the [Domain Registration
+    # Agreement](https://pantechdynamics.com/legal/domain-registration).
     accept_terms: bool
 
 
@@ -3477,6 +3478,8 @@ class _TransferDomainRequestRequired(TypedDict):
     # The code from the current registrar.
     auth_code: str
     contact: DomainContact
+    # Must be true: the registrant accepted the [Domain Registration
+    # Agreement](https://pantechdynamics.com/legal/domain-registration).
     accept_terms: bool
 
 
