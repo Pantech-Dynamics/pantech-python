@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, Iterator, List, Literal, Optional, Union, cast
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Literal, Optional, Union, cast
 
 from .._resource import (
     CertificateWaiter,
@@ -26,13 +26,23 @@ from .._streaming import ServerSentEvent
 from .._types import NOT_GIVEN, Body, Headers, NotGiven, Query, Timeout
 from ..types._generated import (
     Accepted,
+    AddressRotation,
     ApplyKubernetesManifestResponse,
+    Bucket,
+    BucketList,
     Certificate,
     CertificateList,
     CloudConnection,
     CloudConnectionList,
     CloudScan,
     CloudScanList,
+    CompleteBucketMultipartUploadBodyPartsItem,
+    CompleteBucketMultipartUploadResponse,
+    CopyBucketObjectResponse,
+    CreateBucketFolderResponse,
+    CreatedBucket,
+    CreatedObjectStorageKey,
+    CreateInstanceRequestAddressRotation,
     CreditOutlook,
     CreditPurchase,
     Database,
@@ -44,6 +54,8 @@ from ..types._generated import (
     DatabaseOrderAccepted,
     DatabaseOrderList,
     DatabasePasswordAccepted,
+    DeleteBucketObjectsBodyItemsItem,
+    DeleteBucketObjectsResponse,
     DiskOffering,
     DiskOfferingList,
     DNSRecord,
@@ -64,13 +76,21 @@ from ..types._generated import (
     DomainSearchResultList,
     DomainTransferCheck,
     DomainWithOrder,
+    EmptyBucketResponse,
     ExportedCertificate,
     ExposeKubernetesServiceResponse,
     FirewallRule,
     FirewallRuleList,
     GeneratedSSHKey,
+    GetBucketCORSResponse,
+    GetBucketLifecycleResponse,
+    GetBucketObjectLockResponse,
+    GetBucketObjectMetaResponse,
+    GetBucketStatsResponse,
+    GetBucketTagsResponse,
     GetKubernetesLiveManifestsResponse,
     GetKubernetesWorkloadsResponse,
+    GetObjectStorageUsageResponse,
     IamActionList,
     IamAttachment,
     IamAttachmentList,
@@ -114,6 +134,8 @@ from ..types._generated import (
     MonthlyQuote,
     Network,
     NetworkList,
+    ObjectStorageKeyList,
+    ObjectStorageStatus,
     OpenInstanceConsoleResponse,
     Operation,
     OptionalQuote,
@@ -122,10 +144,22 @@ from ..types._generated import (
     PlanList,
     PortForwardingRule,
     PortForwardingRuleList,
+    PresignBucketObjectDownloadResponse,
+    PresignBucketObjectUploadResponse,
     PricingEstimate,
     PricingEstimateRequestMachinesItem,
     PublicIP,
     PublicIPList,
+    PutBucketCORSBodyRulesItem,
+    PutBucketCORSResponse,
+    PutBucketLifecycleBodyRulesItem,
+    PutBucketLifecycleResponse,
+    PutBucketObjectLockResponse,
+    PutBucketObjectTagsBodyTagsItem,
+    PutBucketObjectTagsResponse,
+    PutBucketObjectVisibilityResponse,
+    PutBucketTagsBodyTagsItem,
+    PutBucketTagsResponse,
     QuoteDiskOfferingResponse,
     Receipt,
     ReceiptList,
@@ -143,17 +177,23 @@ from ..types._generated import (
     SecurityGroup,
     SecurityGroupList,
     SecurityGroupRule,
+    SetBucketObjectLockResponse,
+    SignBucketMultipartPartResponse,
     Snapshot,
     SnapshotList,
     SnapshotSchedule,
     SSHAccessGrant,
     SSHKey,
     SSHKeyList,
+    StartBucketMultipartUploadResponse,
     Subnet,
     SubnetList,
     SyncKubernetesRoutingResponse,
     TLDOffer,
     TLDOfferList,
+    UpdatedBucket,
+    UploadBucketMultipartPartResponse,
+    UploadBucketObjectResponse,
     UsageByResource,
     UsageSummary,
     Volume,
@@ -859,6 +899,134 @@ class InstancesSshAccessResource(SyncResource):
         )
 
 
+class InstancesDynamicIpResource(SyncResource):
+    """Dynamic IP: a public outbound address that rotates on a schedule or on demand."""
+
+    def get(
+        self,
+        instance_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> AddressRotation:
+        """Get an instance's dynamic IP.
+
+        ``GET /instances/{instance_id}/address-rotation``
+
+        Args:
+          instance_id: The resource's id.
+        """
+        return cast(
+            "AddressRotation",
+            self._client.request(
+                "GET",
+                f"/instances/{path_param(instance_id)}/address-rotation",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def set(
+        self,
+        instance_id: str,
+        *,
+        schedule: Literal["every_12_hours", "daily", "weekly", "monthly"],
+        connections: Union[Literal["keep", "move"], NotGiven] = NOT_GIVEN,
+        on_demand: Union[bool, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> AddressRotation:
+        """Turn on or change dynamic IP.
+
+        ``PUT /instances/{instance_id}/address-rotation``
+
+        Args:
+          instance_id: The resource's id.
+          schedule: How often the dynamic IP changes.
+          connections: `keep` (default): open connections keep the old address until they
+              close.
+          on_demand: Allow rotate now. Needs it enabled for your organization.
+        """
+        return cast(
+            "AddressRotation",
+            self._client.request(
+                "PUT",
+                f"/instances/{path_param(instance_id)}/address-rotation",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {"schedule": schedule, "connections": connections, "on_demand": on_demand}, extra_body
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def disable(
+        self,
+        instance_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> AddressRotation:
+        """Turn off dynamic IP.
+
+        ``DELETE /instances/{instance_id}/address-rotation``
+
+        Args:
+          instance_id: The resource's id.
+        """
+        return cast(
+            "AddressRotation",
+            self._client.request(
+                "DELETE",
+                f"/instances/{path_param(instance_id)}/address-rotation",
+                query=merge_params({}, extra_query),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def rotate(
+        self,
+        instance_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> AddressRotation:
+        """Rotate the dynamic IP now.
+
+        ``POST /instances/{instance_id}/address-rotation/rotate``
+
+        Not replayed by the API, so it is sent once and not retried after an error.
+
+        Args:
+          instance_id: The resource's id.
+        """
+        return cast(
+            "AddressRotation",
+            self._client.request(
+                "POST",
+                f"/instances/{path_param(instance_id)}/address-rotation/rotate",
+                query=merge_params({}, extra_query),
+                idempotency_key=idempotency_key,
+                no_replay=True,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+
 class InstancesOrdersResource(SyncResource):
     """How a new instance is paid for and provisioned."""
 
@@ -943,11 +1111,13 @@ class InstancesResource(InstanceOrderWaiter):
     """Virtual machines (VPS): create, power, change, delete."""
 
     ssh_access: InstancesSshAccessResource
+    dynamic_ip: InstancesDynamicIpResource
     orders: InstancesOrdersResource
 
     def __init__(self, client: SyncAPIClient) -> None:
         super().__init__(client)
         self.ssh_access = InstancesSshAccessResource(client)
+        self.dynamic_ip = InstancesDynamicIpResource(client)
         self.orders = InstancesOrdersResource(client)
 
     def list(
@@ -1051,6 +1221,7 @@ class InstancesResource(InstanceOrderWaiter):
         security_group_id: Union[str, NotGiven] = NOT_GIVEN,
         tags: Union[Dict[str, str], NotGiven] = NOT_GIVEN,
         agent_enabled: Union[bool, NotGiven] = NOT_GIVEN,
+        address_rotation: Union[CreateInstanceRequestAddressRotation, NotGiven] = NOT_GIVEN,
         idempotency_key: Optional[str] = None,
         extra_headers: Optional[Headers] = None,
         extra_query: Optional[Query] = None,
@@ -1082,6 +1253,9 @@ class InstancesResource(InstanceOrderWaiter):
               connects it to your organization, so agent sessions (`POST
               /public/v1/instances/{instance_id}/agent-sessions`) can start with no login to the
               instance.
+          address_rotation: Turns on dynamic IP once the instance runs: outbound traffic
+              leaves from a dynamic IP that changes on the schedule, while inbound still reaches
+              the instance's static address.
         """
         return cast(
             "OrderAccepted",
@@ -1102,6 +1276,7 @@ class InstancesResource(InstanceOrderWaiter):
                         "security_group_id": security_group_id,
                         "tags": tags,
                         "agent_enabled": agent_enabled,
+                        "address_rotation": address_rotation,
                     },
                     extra_body,
                 ),
@@ -9468,6 +9643,1176 @@ class DomainsResource(DomainOrderWaiter):
         )
 
 
+class ObjectStorageKeysResource(SyncResource):
+    """S3 access keys for tools and SDKs."""
+
+    def list(
+        self,
+        *,
+        region: Union[str, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> ObjectStorageKeyList:
+        """List access keys.
+
+        ``GET /object-storage/keys``
+
+        Args:
+          region: The region code, e.g. `af-abj`.
+        """
+        return cast(
+            "ObjectStorageKeyList",
+            self._client.request(
+                "GET",
+                "/object-storage/keys",
+                query=merge_params({"region": region}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def create(
+        self,
+        *,
+        name: str,
+        region: Union[str, NotGiven] = NOT_GIVEN,
+        read_only: Union[bool, NotGiven] = NOT_GIVEN,
+        buckets: Union[List[str], NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> CreatedObjectStorageKey:
+        """Create an access key.
+
+        ``POST /object-storage/keys``
+
+        Not replayed by the API, so it is sent once and not retried after an error.
+
+        Args:
+          name: 1 to 64 letters, digits, `-`, `_` or `.`.
+          region: The region code. Defaults to the region object storage is offered in.
+          read_only: Allow only reading and listing.
+          buckets: Limit the key to these bucket names; absent or empty is every bucket.
+        """
+        return cast(
+            "CreatedObjectStorageKey",
+            hide_secret(
+                self._client.request(
+                    "POST",
+                    "/object-storage/keys",
+                    query=merge_params({}, extra_query),
+                    body=merge_params(
+                        {"name": name, "region": region, "read_only": read_only, "buckets": buckets}, extra_body
+                    ),
+                    idempotency_key=idempotency_key,
+                    no_replay=True,
+                    extra_headers=extra_headers,
+                    timeout=timeout,
+                )
+            ),
+        )
+
+    def revoke(
+        self,
+        storage_key_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> None:
+        """Revoke an access key.
+
+        ``DELETE /object-storage/keys/{storage_key_id}``
+
+        Args:
+          storage_key_id: The access key's id, starting `osk_`.
+        """
+        self._client.request(
+            "DELETE",
+            f"/object-storage/keys/{path_param(storage_key_id)}",
+            query=merge_params({}, extra_query),
+            idempotency_key=idempotency_key,
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+        return None
+
+
+class ObjectStorageResource(SyncResource):
+    """S3-compatible object storage: availability, usage, and access keys."""
+
+    keys: ObjectStorageKeysResource
+
+    def __init__(self, client: SyncAPIClient) -> None:
+        super().__init__(client)
+        self.keys = ObjectStorageKeysResource(client)
+
+    def get_status(
+        self,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> ObjectStorageStatus:
+        """Object storage status.
+
+        ``GET /object-storage``
+        """
+        return cast(
+            "ObjectStorageStatus",
+            self._client.request(
+                "GET",
+                "/object-storage",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def get_usage(
+        self,
+        *,
+        range: Union[Literal["24h", "7d", "30d"], NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> GetObjectStorageUsageResponse:
+        """Object storage transfer and request usage.
+
+        ``GET /object-storage/usage``
+        """
+        return cast(
+            "GetObjectStorageUsageResponse",
+            self._client.request(
+                "GET",
+                "/object-storage/usage",
+                query=merge_params({"range": range}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+
+class BucketsObjectsResource(SyncResource):
+    """Bucket objects: list, upload, download, presign, copy, delete, tags, lock, and visibility."""
+
+    def list(
+        self,
+        bucket_id: str,
+        *,
+        prefix: Union[str, NotGiven] = NOT_GIVEN,
+        delimiter: Union[str, NotGiven] = NOT_GIVEN,
+        q: Union[str, NotGiven] = NOT_GIVEN,
+        cursor: Union[str, NotGiven] = NOT_GIVEN,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        versions: Union[bool, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Dict[str, Any]:
+        """List or search bucket objects and folders.
+
+        ``GET /buckets/{bucket_id}/objects``
+        """
+        return cast(
+            "Dict[str, Any]",
+            self._client.request(
+                "GET",
+                f"/buckets/{path_param(bucket_id)}/objects",
+                query=merge_params(
+                    {
+                        "prefix": prefix,
+                        "delimiter": delimiter,
+                        "q": q,
+                        "cursor": cursor,
+                        "limit": limit,
+                        "versions": versions,
+                    },
+                    extra_query,
+                ),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def get_meta(
+        self,
+        bucket_id: str,
+        *,
+        key: str,
+        version_id: Union[str, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> GetBucketObjectMetaResponse:
+        """Get object properties, metadata, tags and lock status.
+
+        ``GET /buckets/{bucket_id}/objects/meta``
+        """
+        return cast(
+            "GetBucketObjectMetaResponse",
+            self._client.request(
+                "GET",
+                f"/buckets/{path_param(bucket_id)}/objects/meta",
+                query=merge_params({"key": key, "version_id": version_id}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def download(
+        self,
+        bucket_id: str,
+        *,
+        key: str,
+        version_id: Union[str, NotGiven] = NOT_GIVEN,
+        inline: Union[bool, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> bytes:
+        """Download an object.
+
+        ``GET /buckets/{bucket_id}/objects/download``
+        """
+        return cast(
+            "bytes",
+            self._client.request(
+                "GET",
+                f"/buckets/{path_param(bucket_id)}/objects/download",
+                query=merge_params({"key": key, "version_id": version_id, "inline": inline}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+                parse_as="octet-stream",
+            ),
+        )
+
+    def presign_download(
+        self,
+        bucket_id: str,
+        *,
+        key: str,
+        version_id: Union[str, NotGiven] = NOT_GIVEN,
+        inline: Union[bool, NotGiven] = NOT_GIVEN,
+        expires_in_seconds: Union[int, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> PresignBucketObjectDownloadResponse:
+        """Request a short-lived direct download URL.
+
+        ``POST /buckets/{bucket_id}/objects/download-url``
+        """
+        return cast(
+            "PresignBucketObjectDownloadResponse",
+            self._client.request(
+                "POST",
+                f"/buckets/{path_param(bucket_id)}/objects/download-url",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {"key": key, "version_id": version_id, "inline": inline, "expires_in_seconds": expires_in_seconds},
+                    extra_body,
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def upload(
+        self,
+        bucket_id: str,
+        *,
+        key: str,
+        body: bytes,
+        content_type: Union[str, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> UploadBucketObjectResponse:
+        """Upload an object.
+
+        ``PUT /buckets/{bucket_id}/objects/upload``
+
+        Args:
+          body: Raw bytes to upload.
+          content_type: Media type sent in the Content-Type header (defaults to
+              application/octet-stream).
+        """
+        return cast(
+            "UploadBucketObjectResponse",
+            self._client.request(
+                "PUT",
+                f"/buckets/{path_param(bucket_id)}/objects/upload",
+                query=merge_params({"key": key}, extra_query),
+                content=body,
+                idempotency_key=idempotency_key,
+                extra_headers=merge_headers({"Content-Type": content_type}, extra_headers),
+                timeout=timeout,
+            ),
+        )
+
+    def presign_upload(
+        self,
+        bucket_id: str,
+        *,
+        key: str,
+        content_type: Union[str, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> PresignBucketObjectUploadResponse:
+        """Request a short-lived direct upload URL.
+
+        ``POST /buckets/{bucket_id}/objects/upload-url``
+        """
+        return cast(
+            "PresignBucketObjectUploadResponse",
+            self._client.request(
+                "POST",
+                f"/buckets/{path_param(bucket_id)}/objects/upload-url",
+                query=merge_params({}, extra_query),
+                body=merge_params({"key": key, "content_type": content_type}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def create_folder(
+        self,
+        bucket_id: str,
+        *,
+        prefix: str,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> CreateBucketFolderResponse:
+        """Create a folder prefix.
+
+        ``POST /buckets/{bucket_id}/objects/folder``
+        """
+        return cast(
+            "CreateBucketFolderResponse",
+            self._client.request(
+                "POST",
+                f"/buckets/{path_param(bucket_id)}/objects/folder",
+                query=merge_params({}, extra_query),
+                body=merge_params({"prefix": prefix}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def copy(
+        self,
+        bucket_id: str,
+        *,
+        source_key: str,
+        destination_key: str,
+        delete_source: Union[bool, NotGiven] = NOT_GIVEN,
+        replace_metadata: Union[bool, NotGiven] = NOT_GIVEN,
+        content_type: Union[str, NotGiven] = NOT_GIVEN,
+        cache_control: Union[str, NotGiven] = NOT_GIVEN,
+        content_disposition: Union[str, NotGiven] = NOT_GIVEN,
+        metadata: Union[Dict[str, Any], NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> CopyBucketObjectResponse:
+        """Copy, rename or update metadata on an object.
+
+        ``POST /buckets/{bucket_id}/objects/copy``
+        """
+        return cast(
+            "CopyBucketObjectResponse",
+            self._client.request(
+                "POST",
+                f"/buckets/{path_param(bucket_id)}/objects/copy",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {
+                        "source_key": source_key,
+                        "destination_key": destination_key,
+                        "delete_source": delete_source,
+                        "replace_metadata": replace_metadata,
+                        "content_type": content_type,
+                        "cache_control": cache_control,
+                        "content_disposition": content_disposition,
+                        "metadata": metadata,
+                    },
+                    extra_body,
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def delete(
+        self,
+        bucket_id: str,
+        *,
+        items: Union[List[DeleteBucketObjectsBodyItemsItem], NotGiven] = NOT_GIVEN,
+        recursive_prefix: Union[str, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DeleteBucketObjectsResponse:
+        """Delete objects, versions or a folder prefix.
+
+        ``POST /buckets/{bucket_id}/objects/delete``
+        """
+        return cast(
+            "DeleteBucketObjectsResponse",
+            self._client.request(
+                "POST",
+                f"/buckets/{path_param(bucket_id)}/objects/delete",
+                query=merge_params({}, extra_query),
+                body=merge_params({"items": items, "recursive_prefix": recursive_prefix}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def set_tags(
+        self,
+        bucket_id: str,
+        *,
+        key: str,
+        tags: List[PutBucketObjectTagsBodyTagsItem],
+        version_id: Union[str, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> PutBucketObjectTagsResponse:
+        """Replace tags on an object.
+
+        ``PUT /buckets/{bucket_id}/objects/tags``
+        """
+        return cast(
+            "PutBucketObjectTagsResponse",
+            self._client.request(
+                "PUT",
+                f"/buckets/{path_param(bucket_id)}/objects/tags",
+                query=merge_params({}, extra_query),
+                body=merge_params({"key": key, "version_id": version_id, "tags": tags}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def set_lock(
+        self,
+        bucket_id: str,
+        *,
+        key: str,
+        version_id: Union[str, NotGiven] = NOT_GIVEN,
+        retention_mode: Union[Literal["GOVERNANCE", "COMPLIANCE"], NotGiven] = NOT_GIVEN,
+        retain_until: Union[str, NotGiven] = NOT_GIVEN,
+        bypass_governance: Union[bool, NotGiven] = NOT_GIVEN,
+        legal_hold: Union[bool, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> SetBucketObjectLockResponse:
+        """Update retention or legal hold on an object.
+
+        ``PUT /buckets/{bucket_id}/objects/lock``
+        """
+        return cast(
+            "SetBucketObjectLockResponse",
+            self._client.request(
+                "PUT",
+                f"/buckets/{path_param(bucket_id)}/objects/lock",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {
+                        "key": key,
+                        "version_id": version_id,
+                        "retention_mode": retention_mode,
+                        "retain_until": retain_until,
+                        "bypass_governance": bypass_governance,
+                        "legal_hold": legal_hold,
+                    },
+                    extra_body,
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def set_visibility(
+        self,
+        bucket_id: str,
+        *,
+        key: str,
+        public: bool,
+        version_id: Union[str, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> PutBucketObjectVisibilityResponse:
+        """Set an object's public or private visibility.
+
+        ``PUT /buckets/{bucket_id}/objects/visibility``
+        """
+        return cast(
+            "PutBucketObjectVisibilityResponse",
+            self._client.request(
+                "PUT",
+                f"/buckets/{path_param(bucket_id)}/objects/visibility",
+                query=merge_params({}, extra_query),
+                body=merge_params({"key": key, "version_id": version_id, "public": public}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+
+class BucketsMultipartResource(SyncResource):
+    """Multipart uploads for large objects."""
+
+    def start(
+        self,
+        bucket_id: str,
+        *,
+        key: str,
+        content_type: Union[str, NotGiven] = NOT_GIVEN,
+        cache_control: Union[str, NotGiven] = NOT_GIVEN,
+        content_disposition: Union[str, NotGiven] = NOT_GIVEN,
+        metadata: Union[Dict[str, Any], NotGiven] = NOT_GIVEN,
+        total_size: Union[int, NotGiven] = NOT_GIVEN,
+        public: Union[bool, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> StartBucketMultipartUploadResponse:
+        """Start a multipart upload.
+
+        ``POST /buckets/{bucket_id}/objects/multipart/start``
+
+        Not replayed by the API, so it is sent once and not retried after an error.
+        """
+        return cast(
+            "StartBucketMultipartUploadResponse",
+            self._client.request(
+                "POST",
+                f"/buckets/{path_param(bucket_id)}/objects/multipart/start",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {
+                        "key": key,
+                        "content_type": content_type,
+                        "cache_control": cache_control,
+                        "content_disposition": content_disposition,
+                        "metadata": metadata,
+                        "total_size": total_size,
+                        "public": public,
+                    },
+                    extra_body,
+                ),
+                idempotency_key=idempotency_key,
+                no_replay=True,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def sign_part(
+        self,
+        bucket_id: str,
+        *,
+        key: str,
+        upload_id: str,
+        part_number: int,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> SignBucketMultipartPartResponse:
+        """Sign a direct upload URL for one multipart part.
+
+        ``POST /buckets/{bucket_id}/objects/multipart/sign-part``
+        """
+        return cast(
+            "SignBucketMultipartPartResponse",
+            self._client.request(
+                "POST",
+                f"/buckets/{path_param(bucket_id)}/objects/multipart/sign-part",
+                query=merge_params({}, extra_query),
+                body=merge_params({"key": key, "upload_id": upload_id, "part_number": part_number}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def upload_part(
+        self,
+        bucket_id: str,
+        *,
+        key: str,
+        upload_id: str,
+        part_number: int,
+        body: bytes,
+        content_type: Union[str, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> UploadBucketMultipartPartResponse:
+        """Upload one multipart part.
+
+        ``PUT /buckets/{bucket_id}/objects/multipart/part``
+
+        Args:
+          body: Raw bytes to upload.
+          content_type: Media type sent in the Content-Type header (defaults to
+              application/octet-stream).
+        """
+        return cast(
+            "UploadBucketMultipartPartResponse",
+            self._client.request(
+                "PUT",
+                f"/buckets/{path_param(bucket_id)}/objects/multipart/part",
+                query=merge_params({"key": key, "upload_id": upload_id, "part_number": part_number}, extra_query),
+                content=body,
+                idempotency_key=idempotency_key,
+                extra_headers=merge_headers({"Content-Type": content_type}, extra_headers),
+                timeout=timeout,
+            ),
+        )
+
+    def complete(
+        self,
+        bucket_id: str,
+        *,
+        key: str,
+        upload_id: str,
+        parts: List[CompleteBucketMultipartUploadBodyPartsItem],
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> CompleteBucketMultipartUploadResponse:
+        """Complete a multipart upload.
+
+        ``POST /buckets/{bucket_id}/objects/multipart/complete``
+
+        Not replayed by the API, so it is sent once and not retried after an error.
+        """
+        return cast(
+            "CompleteBucketMultipartUploadResponse",
+            self._client.request(
+                "POST",
+                f"/buckets/{path_param(bucket_id)}/objects/multipart/complete",
+                query=merge_params({}, extra_query),
+                body=merge_params({"key": key, "upload_id": upload_id, "parts": parts}, extra_body),
+                idempotency_key=idempotency_key,
+                no_replay=True,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def abort(
+        self,
+        bucket_id: str,
+        *,
+        key: str,
+        upload_id: str,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> None:
+        """Abort a multipart upload.
+
+        ``POST /buckets/{bucket_id}/objects/multipart/abort``
+        """
+        self._client.request(
+            "POST",
+            f"/buckets/{path_param(bucket_id)}/objects/multipart/abort",
+            query=merge_params({}, extra_query),
+            body=merge_params({"key": key, "upload_id": upload_id}, extra_body),
+            idempotency_key=idempotency_key,
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+        return None
+
+
+class BucketsResource(SyncResource):
+    """Object storage buckets: lifecycle, CORS, tags, object lock, and stats."""
+
+    objects: BucketsObjectsResource
+    multipart: BucketsMultipartResource
+
+    def __init__(self, client: SyncAPIClient) -> None:
+        super().__init__(client)
+        self.objects = BucketsObjectsResource(client)
+        self.multipart = BucketsMultipartResource(client)
+
+    def list(
+        self,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> BucketList:
+        """List buckets.
+
+        ``GET /buckets``
+        """
+        return cast(
+            "BucketList",
+            self._client.request(
+                "GET",
+                "/buckets",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def create(
+        self,
+        *,
+        name: str,
+        region: Union[str, NotGiven] = NOT_GIVEN,
+        quota_bytes: Union[int, NotGiven] = NOT_GIVEN,
+        versioning: Union[bool, NotGiven] = NOT_GIVEN,
+        object_lock: Union[bool, NotGiven] = NOT_GIVEN,
+        public_prefixes: Union[List[str], NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> CreatedBucket:
+        """Create a bucket.
+
+        ``POST /buckets``
+
+        Args:
+          name: 3 to 63 lowercase letters, digits and hyphens, starting and ending with a
+              letter or digit.
+          region: The region code. Defaults to the region object storage is offered in.
+          quota_bytes: Your own limit on stored bytes; 0 or absent is none.
+          versioning: Keep earlier versions of overwritten and deleted objects.
+          object_lock: Allow objects to be locked against deletion.
+          public_prefixes: Key prefixes anyone may read without a key, e.g. `public/`.
+        """
+        return cast(
+            "CreatedBucket",
+            self._client.request(
+                "POST",
+                "/buckets",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {
+                        "name": name,
+                        "region": region,
+                        "quota_bytes": quota_bytes,
+                        "versioning": versioning,
+                        "object_lock": object_lock,
+                        "public_prefixes": public_prefixes,
+                    },
+                    extra_body,
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def get(
+        self,
+        bucket_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Bucket:
+        """Get a bucket.
+
+        ``GET /buckets/{bucket_id}``
+
+        Args:
+          bucket_id: The bucket's id, starting `bkt_`.
+        """
+        return cast(
+            "Bucket",
+            self._client.request(
+                "GET",
+                f"/buckets/{path_param(bucket_id)}",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def update(
+        self,
+        bucket_id: str,
+        *,
+        quota_bytes: Union[int, NotGiven] = NOT_GIVEN,
+        versioning: Union[bool, NotGiven] = NOT_GIVEN,
+        public_prefixes: Union[List[str], NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> UpdatedBucket:
+        """Change a bucket.
+
+        ``PATCH /buckets/{bucket_id}``
+
+        Args:
+          bucket_id: The bucket's id, starting `bkt_`.
+          quota_bytes: Your own limit on stored bytes; 0 removes it.
+          versioning: Keep earlier versions of overwritten and deleted objects.
+          public_prefixes: Replaces the public prefixes; an empty list makes the bucket
+              wholly private.
+        """
+        return cast(
+            "UpdatedBucket",
+            self._client.request(
+                "PATCH",
+                f"/buckets/{path_param(bucket_id)}",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {"quota_bytes": quota_bytes, "versioning": versioning, "public_prefixes": public_prefixes},
+                    extra_body,
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def delete(
+        self,
+        bucket_id: str,
+        *,
+        force: Union[bool, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Accepted:
+        """Delete a bucket.
+
+        ``DELETE /buckets/{bucket_id}``
+
+        Args:
+          bucket_id: The bucket's id, starting `bkt_`.
+          force: Delete the bucket even though it holds objects, which are removed with it.
+        """
+        return cast(
+            "Accepted",
+            self._client.request(
+                "DELETE",
+                f"/buckets/{path_param(bucket_id)}",
+                query=merge_params({"force": force}, extra_query),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def get_stats(
+        self,
+        bucket_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> GetBucketStatsResponse:
+        """Bucket storage stats.
+
+        ``GET /buckets/{bucket_id}/stats``
+        """
+        return cast(
+            "GetBucketStatsResponse",
+            self._client.request(
+                "GET",
+                f"/buckets/{path_param(bucket_id)}/stats",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def empty(
+        self,
+        bucket_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> EmptyBucketResponse:
+        """Empty a bucket.
+
+        ``POST /buckets/{bucket_id}/empty``
+
+        Not replayed by the API, so it is sent once and not retried after an error.
+        """
+        return cast(
+            "EmptyBucketResponse",
+            self._client.request(
+                "POST",
+                f"/buckets/{path_param(bucket_id)}/empty",
+                query=merge_params({}, extra_query),
+                idempotency_key=idempotency_key,
+                no_replay=True,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def get_cors(
+        self,
+        bucket_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> GetBucketCORSResponse:
+        """Get bucket CORS rules.
+
+        ``GET /buckets/{bucket_id}/cors``
+        """
+        return cast(
+            "GetBucketCORSResponse",
+            self._client.request(
+                "GET",
+                f"/buckets/{path_param(bucket_id)}/cors",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def set_cors(
+        self,
+        bucket_id: str,
+        *,
+        rules: List[PutBucketCORSBodyRulesItem],
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> PutBucketCORSResponse:
+        """Replace bucket CORS rules.
+
+        ``PUT /buckets/{bucket_id}/cors``
+        """
+        return cast(
+            "PutBucketCORSResponse",
+            self._client.request(
+                "PUT",
+                f"/buckets/{path_param(bucket_id)}/cors",
+                query=merge_params({}, extra_query),
+                body=merge_params({"rules": rules}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def get_lifecycle(
+        self,
+        bucket_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> GetBucketLifecycleResponse:
+        """Get bucket lifecycle rules.
+
+        ``GET /buckets/{bucket_id}/lifecycle``
+        """
+        return cast(
+            "GetBucketLifecycleResponse",
+            self._client.request(
+                "GET",
+                f"/buckets/{path_param(bucket_id)}/lifecycle",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def set_lifecycle(
+        self,
+        bucket_id: str,
+        *,
+        rules: List[PutBucketLifecycleBodyRulesItem],
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> PutBucketLifecycleResponse:
+        """Replace bucket lifecycle rules.
+
+        ``PUT /buckets/{bucket_id}/lifecycle``
+        """
+        return cast(
+            "PutBucketLifecycleResponse",
+            self._client.request(
+                "PUT",
+                f"/buckets/{path_param(bucket_id)}/lifecycle",
+                query=merge_params({}, extra_query),
+                body=merge_params({"rules": rules}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def get_tags(
+        self,
+        bucket_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> GetBucketTagsResponse:
+        """Get bucket tags.
+
+        ``GET /buckets/{bucket_id}/tags``
+        """
+        return cast(
+            "GetBucketTagsResponse",
+            self._client.request(
+                "GET",
+                f"/buckets/{path_param(bucket_id)}/tags",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def set_tags(
+        self,
+        bucket_id: str,
+        *,
+        tags: List[PutBucketTagsBodyTagsItem],
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> PutBucketTagsResponse:
+        """Replace bucket tags.
+
+        ``PUT /buckets/{bucket_id}/tags``
+        """
+        return cast(
+            "PutBucketTagsResponse",
+            self._client.request(
+                "PUT",
+                f"/buckets/{path_param(bucket_id)}/tags",
+                query=merge_params({}, extra_query),
+                body=merge_params({"tags": tags}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def get_object_lock(
+        self,
+        bucket_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> GetBucketObjectLockResponse:
+        """Get bucket default object-lock retention.
+
+        ``GET /buckets/{bucket_id}/object-lock``
+        """
+        return cast(
+            "GetBucketObjectLockResponse",
+            self._client.request(
+                "GET",
+                f"/buckets/{path_param(bucket_id)}/object-lock",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def set_object_lock(
+        self,
+        bucket_id: str,
+        *,
+        enabled: bool,
+        mode: Literal["GOVERNANCE", "COMPLIANCE"],
+        days: int,
+        years: int,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> PutBucketObjectLockResponse:
+        """Set bucket default object-lock retention.
+
+        ``PUT /buckets/{bucket_id}/object-lock``
+        """
+        return cast(
+            "PutBucketObjectLockResponse",
+            self._client.request(
+                "PUT",
+                f"/buckets/{path_param(bucket_id)}/object-lock",
+                query=merge_params({}, extra_query),
+                body=merge_params({"enabled": enabled, "mode": mode, "days": days, "years": years}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+
 class OperationsResource(OperationsWaiter):
     """Follow asynchronous changes."""
 
@@ -9540,6 +10885,8 @@ class Resources:
     registry: RegistryResource
     dns: DnsResource
     domains: DomainsResource
+    object_storage: ObjectStorageResource
+    buckets: BucketsResource
     operations: OperationsResource
 
     def _init_resources(self, client: SyncAPIClient) -> None:
@@ -9564,4 +10911,6 @@ class Resources:
         self.registry = RegistryResource(client)
         self.dns = DnsResource(client)
         self.domains = DomainsResource(client)
+        self.object_storage = ObjectStorageResource(client)
+        self.buckets = BucketsResource(client)
         self.operations = OperationsResource(client)

@@ -607,9 +607,10 @@ class AsyncDomainOrderWaiter(AsyncResource):
         return _domain_order_result(order)
 
 
-# Response fields that are secrets: a new registry token's ``secret`` and an
-# exported certificate's ``private_key_pem``.
-SECRET_FIELDS = frozenset({"secret", "private_key_pem"})
+# Response fields that are secrets: a new registry token's ``secret``, an
+# exported certificate's ``private_key_pem``, and a new object storage key's
+# ``secret_access_key``.
+SECRET_FIELDS = frozenset({"secret", "private_key_pem", "secret_access_key"})
 
 
 class _SecretHiddenDict(Dict[str, Any]):

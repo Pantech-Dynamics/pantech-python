@@ -51,6 +51,7 @@ FAMILY_DOCS = {
     "catalog": "What you can buy, and what it costs: regions, plans, images, disk offerings, versions, engines.",
     "instances": "Virtual machines (VPS): create, power, change, delete.",
     "instances.ssh_access": "Short-lived SSH access grants to an instance.",
+    "instances.dynamic_ip": "Dynamic IP: a public outbound address that rotates on a schedule or on demand.",
     "instances.orders": "How a new instance is paid for and provisioned.",
     "networks": "VPC networks.",
     "networks.subnets": "Subnets of a VPC network.",
@@ -93,12 +94,17 @@ FAMILY_DOCS = {
     "dns.records": "Record sets of a zone: one name and type each, with a TTL and values.",
     "domains": "Domains: search, register, transfer in, renew, and manage name servers, contact and lock.",
     "domains.orders": "Registrations, renewals and transfers, paid from your credit.",
+    "object_storage": "S3-compatible object storage: availability, usage, and access keys.",
+    "object_storage.keys": "S3 access keys for tools and SDKs.",
+    "buckets": "Object storage buckets: lifecycle, CORS, tags, object lock, and stats.",
+    "buckets.objects": "Bucket objects: list, upload, download, presign, copy, delete, tags, lock, and visibility.",
+    "buckets.multipart": "Multipart uploads for large objects.",
     "operations": "Follow asynchronous changes.",
 }
 
 # Responses that carry a one-time secret: wrapped so ``repr()`` and logging
 # never show it, while ``result["secret"]`` still reads it.
-HIDDEN_SECRETS = frozenset({"createRegistryToken", "exportCertificate"})
+HIDDEN_SECRETS = frozenset({"createRegistryToken", "exportCertificate", "createObjectStorageKey"})
 
 RESERVED = {
     "self",
@@ -200,6 +206,10 @@ class Renderer:
             if p.name in RESERVED or p.name in seen:
                 raise SystemExit(f"{op.operation_id}: argument {p.name!r} collides; rename it in the generator")
             seen.add(p.name)
+        if op.binary_body:
+            for name in ("body", "content_type"):
+                if name in seen:
+                    raise SystemExit(f"{op.operation_id}: binary body argument {name!r} collides with a parameter")
         return op.path_params + op.query_params + op.header_params + op.body_params
 
     def _signature(self, op: OperationSpec, paginate: bool) -> List[str]:
@@ -211,8 +221,12 @@ class Renderer:
         sig.append("        *,")
         for p in [p for p in kw if p.required]:
             sig.append(f"        {p.name}: {self.note(p.type)},")
+        if op.binary_body and not paginate:
+            sig.append("        body: bytes,")
         for p in [p for p in kw if not p.required]:
             sig.append(f"        {p.name}: Union[{self.note(p.type)}, NotGiven] = NOT_GIVEN,")
+        if op.binary_body and not paginate:
+            sig.append("        content_type: Union[str, NotGiven] = NOT_GIVEN,")
         if op.method != "GET" and not paginate:
             sig.append("        idempotency_key: Optional[str] = None,")
         sig.append("        extra_headers: Optional[Headers] = None,")
@@ -231,6 +245,8 @@ class Renderer:
             return "AsyncIterator[ServerSentEvent]" if self.is_async else "Iterator[ServerSentEvent]"
         if op.returns in ("None", "bytes"):
             return op.returns
+        if op.returns == "octet-stream":
+            return "bytes"
         if op.returns == "text":
             return "str"
         return self.note(op.returns)
@@ -243,6 +259,17 @@ class Renderer:
         documented = [p for p in op.path_params + op.query_params + op.header_params + op.body_params if p.doc]
         if paginate:
             documented = [p for p in documented if p.wire != "cursor" and p not in op.body_params]
+        if op.binary_body and not paginate:
+            documented += [
+                Param(name="body", wire="body", type="bytes", required=True, doc="Raw bytes to upload."),
+                Param(
+                    name="content_type",
+                    wire="Content-Type",
+                    type="str",
+                    required=False,
+                    doc="Media type sent in the Content-Type header (defaults to application/octet-stream).",
+                ),
+            ]
         if op.operation_id in self.no_replay and not paginate:
             doc += ["", "        Not replayed by the API, so it is sent once and not retried after an error."]
         if documented:
@@ -294,16 +321,22 @@ class Renderer:
         call = [f"{aw}self._client.request(", f'    "{op.method}",', f"    {path},", f"    query={query},"]
         if op.has_body:
             call.append(f"    body=merge_params({self._dict(op.body_params)}, extra_body),")
+        elif op.binary_body:
+            call.append("    content=body,")
         if op.method != "GET":
             call.append("    idempotency_key=idempotency_key,")
         if op.operation_id in self.no_replay:
             call.append("    no_replay=True,")
-        if op.header_params:
-            call.append(f"    extra_headers=merge_headers({self._dict(op.header_params)}, extra_headers),")
+        header_map = {p.wire: p.name for p in op.header_params}
+        if op.binary_body:
+            header_map["Content-Type"] = "content_type"
+        if header_map:
+            hdr_dict = "{" + ", ".join(f'"{k}": {v}' for k, v in header_map.items()) + "}"
+            call.append(f"    extra_headers=merge_headers({hdr_dict}, extra_headers),")
         else:
             call.append("    extra_headers=extra_headers,")
         call.append("    timeout=timeout,")
-        if op.returns in ("bytes", "text"):
+        if op.returns in ("bytes", "octet-stream", "text"):
             call.append(f'    parse_as="{op.returns}",')
         call.append(")")
         if op.returns == "None":

@@ -67,10 +67,14 @@ MAX_RETRY_AFTER = 60.0
 RETRYABLE_STATUSES = frozenset({429, 500, 502, 503, 504})
 WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
-ParseAs = str  # "json" (default), "bytes", "text"
+ParseAs = str  # "json" (default), "bytes", "octet-stream", "text"
 
 # What each way of reading a response asks the API for.
-_ACCEPT = {"bytes": "application/pdf", "text": "text/dns, text/plain;q=0.9"}
+_ACCEPT = {
+    "bytes": "application/pdf",
+    "octet-stream": "application/octet-stream",
+    "text": "text/dns, text/plain;q=0.9",
+}
 
 
 def _strip_not_given(values: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
@@ -132,6 +136,7 @@ class BaseClient:
         *,
         query: Optional[Mapping[str, Any]],
         body: Any,
+        content: Optional[bytes] = None,
         idempotency_key: Optional[str],
         extra_headers: Optional[Mapping[str, str]],
         timeout: Union[Timeout, NotGiven],
@@ -145,12 +150,21 @@ class BaseClient:
         headers["Authorization"] = f"Bearer {self.api_key}"
         if idempotency_key is not None:
             headers["Idempotency-Key"] = idempotency_key
-        content: Optional[bytes] = None
-        if body is not None and not isinstance(body, NotGiven):
+        payload: Optional[bytes] = None
+        if content is not None:
+            if body is not None and not isinstance(body, NotGiven):
+                raise ValueError("pass either body or content, not both")
+            headers["Content-Type"] = "application/octet-stream"
+            payload = content
+        elif body is not None and not isinstance(body, NotGiven):
             headers["Content-Type"] = "application/json"
-            content = json.dumps(body, separators=(",", ":")).encode("utf-8")
+            payload = json.dumps(body, separators=(",", ":")).encode("utf-8")
         if extra_headers:
-            headers.update(extra_headers)
+            for key, val in extra_headers.items():
+                for existing in list(headers):
+                    if existing.lower() == key.lower():
+                        del headers[existing]
+                headers[key] = val
         params = {k: _query_value(v) for k, v in _strip_not_given(query).items() if v is not None}
         effective_timeout = self.timeout if isinstance(timeout, NotGiven) else timeout
         return http.build_request(
@@ -158,7 +172,7 @@ class BaseClient:
             self.base_url + path,
             params=params or None,
             headers=headers,
-            content=content,
+            content=payload,
             timeout=effective_timeout,
         )
 
@@ -192,7 +206,7 @@ class BaseClient:
 
     @staticmethod
     def _parse(response: httpx.Response, parse_as: ParseAs) -> Any:
-        if parse_as == "bytes":
+        if parse_as in ("bytes", "octet-stream"):
             return response.content
         if parse_as == "text":
             return response.text
@@ -253,6 +267,7 @@ class SyncAPIClient(BaseClient):
         *,
         query: Optional[Mapping[str, Any]] = None,
         body: Any = None,
+        content: Optional[bytes] = None,
         idempotency_key: Optional[str] = None,
         no_replay: bool = False,
         extra_headers: Optional[Mapping[str, str]] = None,
@@ -270,6 +285,7 @@ class SyncAPIClient(BaseClient):
             path,
             query=query,
             body=body,
+            content=content,
             idempotency_key=idempotency_key,
             no_replay=no_replay,
             extra_headers=extra_headers,
@@ -286,6 +302,7 @@ class SyncAPIClient(BaseClient):
         *,
         query: Optional[Mapping[str, Any]],
         body: Any,
+        content: Optional[bytes] = None,
         idempotency_key: Optional[str],
         no_replay: bool,
         extra_headers: Optional[Mapping[str, str]],
@@ -305,6 +322,7 @@ class SyncAPIClient(BaseClient):
                 path,
                 query=query,
                 body=body,
+                content=content,
                 idempotency_key=key,
                 extra_headers=extra_headers,
                 timeout=timeout,
@@ -425,6 +443,7 @@ class AsyncAPIClient(BaseClient):
         *,
         query: Optional[Mapping[str, Any]] = None,
         body: Any = None,
+        content: Optional[bytes] = None,
         idempotency_key: Optional[str] = None,
         no_replay: bool = False,
         extra_headers: Optional[Mapping[str, str]] = None,
@@ -438,6 +457,7 @@ class AsyncAPIClient(BaseClient):
             path,
             query=query,
             body=body,
+            content=content,
             idempotency_key=idempotency_key,
             no_replay=no_replay,
             extra_headers=extra_headers,
@@ -454,6 +474,7 @@ class AsyncAPIClient(BaseClient):
         *,
         query: Optional[Mapping[str, Any]],
         body: Any,
+        content: Optional[bytes] = None,
         idempotency_key: Optional[str],
         no_replay: bool,
         extra_headers: Optional[Mapping[str, str]],
@@ -473,6 +494,7 @@ class AsyncAPIClient(BaseClient):
                 path,
                 query=query,
                 body=body,
+                content=content,
                 idempotency_key=key,
                 extra_headers=extra_headers,
                 timeout=timeout,

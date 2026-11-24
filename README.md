@@ -5,8 +5,8 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 The official Python library for the [Pantech Dynamics public API](https://docs.pantechdynamics.com/api):
-instances, VPC networks, firewalls, public IPs, load balancers, volumes, snapshots, managed databases,
-managed Kubernetes, SSH keys, webhooks, billing, usage, and moving from another cloud.
+instances, VPC networks, firewalls, public IPs, load balancers, volumes, snapshots, object storage,
+managed databases, managed Kubernetes, SSH keys, webhooks, billing, usage, and moving from another cloud.
 
 - Sync (`Pantech`) and asyncio (`AsyncPantech`) clients with the same methods
 - Every operation in the public API, with typed keyword arguments and TypedDict results (agent
@@ -87,16 +87,90 @@ Families are attributes of the client and nest where the API does:
 client.networks.create(name="prod", cidr="10.10.0.0/16")
 client.networks.subnets.list("net_...")
 client.networks.firewall_rules.create("snet_...", ...)
+client.instances.dynamic_ip.set("vm_...", schedule="weekly")
 client.public_ips.port_forwarding_rules.list("pip_...")
 client.databases.snapshots.create("db_...", name="before-migration")
 client.kubernetes.node_pools.scale("k8s_...", "k8spool_...", workers=3)
 client.catalog.list_plans(placement="vpc")
+client.buckets.objects.upload("bkt_...", key="hello.txt", body=b"hello", content_type="text/plain")
 client.billing.receipts.get_pdf("rcpt_...")  # bytes
 ```
 
 Arguments are keyword-only, except the ids in the path. Optional arguments you leave out are not
 sent; passing `None` sends JSON `null`. Results are plain dicts typed with the TypedDicts in
 `pantech.types`. `client.request("GET", "/me")` calls any route directly.
+
+### Dynamic IP
+
+`client.instances.dynamic_ip` manages a rotating public outbound address on a standard instance:
+outbound traffic leaves from a dynamic IP that changes on your schedule (`every_12_hours`, `daily`,
+`weekly`, or `monthly`), while inbound traffic continues to reach the instance's static address.
+
+```python
+# Enable Dynamic IP at creation time:
+order = client.instances.create(
+    name="worker-1",
+    plan_slug="starter",
+    image_slug="ubuntu-24-04",
+    ssh_key_id="sshk_...",
+    security_group_id="sg_...",
+    address_rotation={"schedule": "weekly", "connections": "keep"},
+)
+
+# Or manage Dynamic IP on an existing instance:
+client.instances.dynamic_ip.set("vm_...", schedule="daily", connections="move", on_demand=True)
+ip = client.instances.dynamic_ip.get("vm_...")
+print(ip["state"], ip["current_address"], ip["next_rotation_at"])
+
+# Rotate immediately (requires on_demand=True; sent once and never retried after an error):
+client.instances.dynamic_ip.rotate("vm_...")
+
+# Turn off Dynamic IP and end its surcharge:
+client.instances.dynamic_ip.disable("vm_...")
+```
+
+### Object storage
+
+`client.object_storage` and `client.buckets` manage S3-compatible buckets, access keys, bucket
+rules (CORS, lifecycle, tags, object lock), objects, and multipart uploads:
+
+```python
+bucket = client.buckets.create(name="app-assets", region="af-abj", versioning=True)
+
+# Create an S3 access key (secret_access_key is returned once; repr/str show <hidden>):
+key = client.object_storage.keys.create(name="ci-uploads", buckets=["app-assets"])
+save_to_ci_secrets(key["access_key_id"], key["secret_access_key"])
+
+# Upload and download objects directly through the API:
+client.buckets.objects.upload(
+    bucket["id"],
+    key="reports/daily.csv",
+    body=b"id,total\n1,42\n",
+    content_type="text/csv",
+)
+raw: bytes = client.buckets.objects.download(bucket["id"], key="reports/daily.csv")
+
+# Presigned URLs and object visibility:
+signed = client.buckets.objects.presign_download(bucket["id"], key="reports/daily.csv", expires_in_seconds=600)
+client.buckets.objects.set_visibility(bucket["id"], key="reports/daily.csv", public=True)
+
+# Multipart upload for large objects:
+mp = client.buckets.multipart.start(bucket["id"], key="backups/db.tar.gz", content_type="application/gzip")
+part = client.buckets.multipart.upload_part(
+    bucket["id"], key="backups/db.tar.gz", upload_id=mp["upload_id"], part_number=1, body=chunk
+)
+client.buckets.multipart.complete(
+    bucket["id"],
+    key="backups/db.tar.gz",
+    upload_id=mp["upload_id"],
+    parts=[{"part_number": 1, "etag": part["etag"]}],
+)
+```
+
+Bucket configuration (`get_cors`/`set_cors`, `get_lifecycle`/`set_lifecycle`, `get_tags`/`set_tags`,
+`get_object_lock`/`set_object_lock`, `get_stats`, `empty`) and organization status/usage
+(`client.object_storage.get_status()`, `client.object_storage.get_usage()`) are available on both
+`Pantech` and `AsyncPantech`.
 
 ### Move from another cloud
 
@@ -278,8 +352,11 @@ timeouts, `429`, `500`, `502`, `503` and `504` are retried up to `max_retries` t
 exponential backoff, or after the `Retry-After` the API sends.
 
 A few writes are not replayed by the API, so the SDK sends them once and retries only a `429`:
-creating and deleting SSH keys, opening a console, issuing a volume key credential, revoking the
-calling key (`client.me.revoke()`), and the webhook test, delete, secret rotation and redelivery calls.
+creating and deleting SSH keys, opening a console, issuing a volume key credential, rotating an
+instance's dynamic IP now (`client.instances.dynamic_ip.rotate(...)`), revoking the
+calling key (`client.me.revoke()`), creating an object storage access key, emptying a bucket,
+starting or completing a multipart upload, and the webhook test, delete, secret rotation and
+redelivery calls.
 
 ## Errors
 

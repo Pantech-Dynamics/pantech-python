@@ -334,8 +334,9 @@ class OperationSpec:
     header_params: List[Param]  # request headers other than Idempotency-Key, e.g. If-Match
     body_params: List[Param]
     has_body: bool
+    binary_body: bool  # True when requestBody is application/octet-stream
     body_extra_allowed: bool
-    returns: str  # a type expression, "None", "bytes", "text" or "stream"
+    returns: str  # a type expression, "None", "bytes", "octet-stream", "text" or "stream"
     page_item: Optional[str]  # the item type when the response is a cursor page
 
 
@@ -376,20 +377,28 @@ def build_operations(reg: TypeRegistry, skip: FrozenSet[str] = frozenset()) -> D
 
         body_params: List[Param] = []
         has_body = False
+        binary_body = False
         extra_allowed = True
         rb = op.get("requestBody")
         if rb:
-            has_body = True
-            content = rb.get("content", {}).get("application/json", {})
-            body_schema = content.get("schema", {})
-            type_name = reg.py_type(body_schema, ctx + "Body")
-            resolved = reg.resolve(body_schema)
-            extra_allowed = resolved.get("additionalProperties") is not False
-            td = reg.defs.get(type_name)
-            if td is None:
-                raise SystemExit(f"{op_id}: request body is not an object")
-            for fname, ftype, req, fdoc in _all_fields(reg, td):
-                body_params.append(Param(name=fname, wire=fname, type=ftype, required=req, doc=fdoc))
+            rb_content = rb.get("content") or {}
+            if "application/json" in rb_content:
+                has_body = True
+                content = rb_content["application/json"]
+                body_schema = content.get("schema", {})
+                type_name = reg.py_type(body_schema, ctx + "Body")
+                resolved = reg.resolve(body_schema)
+                extra_allowed = resolved.get("additionalProperties") is not False
+                td = reg.defs.get(type_name)
+                if td is None:
+                    raise SystemExit(f"{op_id}: request body is not an object")
+                for fname, ftype, req, fdoc in _all_fields(reg, td):
+                    body_params.append(Param(name=fname, wire=fname, type=ftype, required=req, doc=fdoc))
+            elif "application/octet-stream" in rb_content:
+                binary_body = True
+                extra_allowed = False
+            else:
+                raise SystemExit(f"{op_id}: unsupported request body content types: {sorted(rb_content)}")
 
         returns, page_item = _response_type(reg, op, ctx)
         ops[op_id] = OperationSpec(
@@ -402,6 +411,7 @@ def build_operations(reg: TypeRegistry, skip: FrozenSet[str] = frozenset()) -> D
             header_params=header_params,
             body_params=body_params,
             has_body=has_body,
+            binary_body=binary_body,
             body_extra_allowed=extra_allowed,
             returns=returns,
             page_item=page_item,
@@ -431,6 +441,8 @@ def _response_type(reg: TypeRegistry, op: Dict[str, Any], ctx: str) -> Tuple[str
         if "application/json" not in content:
             if any(ct.startswith("text/") for ct in content):
                 return "text", None
+            if "application/octet-stream" in content:
+                return "octet-stream", None
             return "bytes", None
         # Several JSON successes (200 with the result, 202 while it is on its
         # way) are a union of their bodies.

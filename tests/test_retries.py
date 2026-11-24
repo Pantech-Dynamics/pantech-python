@@ -100,6 +100,7 @@ def test_timeouts_raise_api_timeout_error(make_client) -> None:  # type: ignore[
         lambda c: c.ssh_keys.create(name="k"),
         lambda c: c.ssh_keys.delete("sshk_1"),
         lambda c: c.instances.open_console("vm_1"),
+        lambda c: c.instances.dynamic_ip.rotate("vm_1"),
         lambda c: c.webhooks.test("whk_1"),
         lambda c: c.webhooks.delete("whk_1"),
         lambda c: c.webhooks.rotate_secret("whk_1"),

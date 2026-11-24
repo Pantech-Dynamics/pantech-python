@@ -4,6 +4,16 @@ All notable changes to the `pantech` package. The newest version heading
 (`## X.Y.Z (YYYY-MM-DD)`) is released when it reaches `main`: see
 `.github/workflows/release.yml`. Put work in progress under `## Unreleased`.
 
+## Unreleased
+
+## 0.5.0 (2026-11-24)
+
+FEATURES:
+
+- Dynamic IP for instances: `instances.dynamic_ip` (`get`, `set`, `disable`, and non-replaying `rotate`), optional `address_rotation` on `instances.create`, and `DynamicIP`, `DynamicIPEvent`, and `PutDynamicIPRequest` aliases in `pantech.types`. Sync and async.
+- Object storage (`client.object_storage` and `client.buckets`): `object_storage` (`get_status`, `get_usage`) and `object_storage.keys` (`list`, `create` with hidden `secret_access_key` in `repr()`/`str()`, `revoke`); `buckets` (`list`, `create`, `get`, `update`, `delete`, `get_stats`, `empty`, `get_cors`/`set_cors`, `get_lifecycle`/`set_lifecycle`, `get_tags`/`set_tags`, `get_object_lock`/`set_object_lock`); `buckets.objects` (`list`, `get_meta`, `download`, `presign_download`, `upload`, `presign_upload`, `create_folder`, `copy`, `delete`, `set_tags`, `set_lock`, `set_visibility`); and `buckets.multipart` (`start`, `sign_part`, `upload_part`, `complete`, `abort`). Sync and async.
+- Raw binary request (`content=`) and `application/octet-stream` response support in `BaseClient`, `SyncAPIClient`, and `AsyncAPIClient`.
+
 ## 0.4.0 (2026-11-10)
 
 FEATURES:
