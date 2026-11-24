@@ -1,0 +1,2998 @@
+# Pending public API additions for Object Storage (all 37 operations under
+# /public/v1/object-storage* and /public/v1/buckets*).
+# Merged by scripts/_spec.py only where openapi/public-api.yaml lacks them,
+# so a newer vendored spec always wins. Delete once public-api.yaml has them.
+
+paths:
+  /public/v1/object-storage:
+    get:
+      tags:
+      - Object storage
+      summary: Object storage status
+      description: 'Whether object storage is enabled for your organization, and the S3 endpoint to point S3 tools at. Object
+        storage is in closed beta: until it is enabled, `enabled` is false and every bucket and key write is refused with
+        `OBJECT_STORAGE_NOT_ENABLED`.
+
+
+        **Scope:** `read`.'
+      operationId: getObjectStorage
+      security:
+      - apiKey: []
+      x-scope: read
+      x-order: 453
+      responses:
+        200:
+          description: The status.
+          headers:
+            RateLimit-Limit:
+              description: Requests allowed per window for this key.
+              schema:
+                type: integer
+            RateLimit-Remaining:
+              description: Requests left in this window.
+              schema:
+                type: integer
+            RateLimit-Reset:
+              description: Seconds until the window resets.
+              schema:
+                type: integer
+            X-Request-Id:
+              description: This request's id.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObjectStorageStatus'
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        403:
+          description: '`INSUFFICIENT_SCOPE`: the API key lacks the scope this endpoint needs. Use a key with that scope.
+
+            `FORBIDDEN`: the member who created the key may not do this in the organization. Use a key created by an owner
+            or admin.
+
+            `AI_APPS_DISABLED`: the organization has turned AI app access off. An owner can turn it on in the console under
+            Organization › AI apps.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        429:
+          $ref: '#/components/responses/RateLimited'
+        503:
+          $ref: '#/components/responses/QuotaUnavailable'
+  /public/v1/buckets:
+    get:
+      tags:
+      - Object storage
+      summary: List buckets
+      description: 'Your organization''s buckets, newest first. Deleted buckets are not listed.
+
+
+        **Scope:** `read`.'
+      operationId: listBuckets
+      security:
+      - apiKey: []
+      x-scope: read
+      x-order: 454
+      responses:
+        200:
+          description: Buckets.
+          headers:
+            RateLimit-Limit:
+              description: Requests allowed per window for this key.
+              schema:
+                type: integer
+            RateLimit-Remaining:
+              description: Requests left in this window.
+              schema:
+                type: integer
+            RateLimit-Reset:
+              description: Seconds until the window resets.
+              schema:
+                type: integer
+            X-Request-Id:
+              description: This request's id.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BucketList'
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        403:
+          description: '`INSUFFICIENT_SCOPE`: the API key lacks the scope this endpoint needs. Use a key with that scope.
+
+            `FORBIDDEN`: the member who created the key may not do this in the organization. Use a key created by an owner
+            or admin.
+
+            `AI_APPS_DISABLED`: the organization has turned AI app access off. An owner can turn it on in the console under
+            Organization › AI apps.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        429:
+          $ref: '#/components/responses/RateLimited'
+        503:
+          description: '`OBJECT_STORAGE_UNAVAILABLE`: object storage is not available right now. Retry shortly.
+
+            `QUOTA_UNAVAILABLE`: request quotas cannot be checked right now. Retry shortly.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    post:
+      tags:
+      - Object storage
+      summary: Create a bucket
+      description: 'Creates a bucket. It is usable once `state` is `active`, usually within seconds; follow `operation_id`
+        or get the bucket. Objects are reached with any S3 tool at `endpoint` using path-style addressing (`<endpoint>/<bucket>/<key>`)
+        and an access key.
+
+
+        Stored data is billed per GiB-month, measured hourly; an empty bucket costs nothing. Requests and transfer are not
+        charged during the beta.
+
+
+        **Idempotency:** a retry with the same `Idempotency-Key` returns the first bucket.
+
+
+        **Scope:** `write`.'
+      operationId: createBucket
+      security:
+      - apiKey: []
+      x-scope: write
+      x-order: 455
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBucketRequest'
+      responses:
+        201:
+          description: The bucket, and the operation creating it.
+          headers:
+            RateLimit-Limit:
+              description: Requests allowed per window for this key.
+              schema:
+                type: integer
+            RateLimit-Remaining:
+              description: Requests left in this window.
+              schema:
+                type: integer
+            RateLimit-Reset:
+              description: Seconds until the window resets.
+              schema:
+                type: integer
+            X-Request-Id:
+              description: This request's id.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedBucket'
+        400:
+          description: '`IDEMPOTENCY_KEY_REQUIRED`: the `Idempotency-Key` header is missing. Send a new unique value, such
+            as a UUID, with every write.
+
+            `INVALID_IDEMPOTENCY_KEY`: the `Idempotency-Key` header is longer than 255 characters. Use a shorter value.
+
+            `INVALID_REQUEST_BODY`: the body is not a single valid JSON object. Send one JSON object with the fields documented
+            for this endpoint.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        403:
+          description: '`INSUFFICIENT_SCOPE`: the API key lacks the scope this endpoint needs. Use a key with that scope.
+
+            `FORBIDDEN`: the member who created the key may not do this in the organization. Use a key created by an owner
+            or admin.
+
+            `AI_APPS_DISABLED`: the organization has turned AI app access off. An owner can turn it on in the console under
+            Organization › AI apps.
+
+            `OBJECT_STORAGE_NOT_ENABLED`: object storage is in closed beta and not enabled for your organization yet.
+
+            `BUCKET_LIMIT_REACHED`: the organization already has the most buckets allowed.
+
+            `OBJECT_STORAGE_SUSPENDED`: object storage is suspended for this organization.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        409:
+          description: '`BUCKET_NAME_TAKEN`: the organization already has a bucket with that name in this region. A deleted
+            bucket''s name is free again once its removal finishes.
+
+            `IDEMPOTENCY_CONFLICT`: that idempotency key was already used for a different request.
+
+            `ACCOUNT_SUSPENDED`: the account has an overdue invoice. Pay it under Billing in the console, then try again.
+
+            `ACCOUNT_NOT_ACTIVE`: billing setup is not finished. Finish it under Billing in the console, then try again.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        422:
+          description: '`VALIDATION_FAILED`: `name` must be 3 to 63 lowercase letters, digits and hyphens, starting and ending
+            with a letter or digit; `quota_bytes` must be 0 or positive; at most 20 `public_prefixes`, each at most 512 characters.
+
+            `OBJECT_STORAGE_REGION_UNAVAILABLE`: object storage is not offered in this region.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        429:
+          $ref: '#/components/responses/RateLimited'
+        503:
+          description: '`OBJECT_STORAGE_UNAVAILABLE`: object storage is not available right now. Retry shortly.
+
+            `QUOTA_UNAVAILABLE`: request quotas cannot be checked right now. Retry shortly.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /public/v1/buckets/{bucket_id}:
+    get:
+      tags:
+      - Object storage
+      summary: Get a bucket
+      description: 'One bucket.
+
+
+        **Scope:** `read`.'
+      operationId: getBucket
+      security:
+      - apiKey: []
+      x-scope: read
+      x-order: 456
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        description: The bucket's id, starting `bkt_`.
+        schema:
+          type: string
+      responses:
+        200:
+          description: The bucket.
+          headers:
+            RateLimit-Limit:
+              description: Requests allowed per window for this key.
+              schema:
+                type: integer
+            RateLimit-Remaining:
+              description: Requests left in this window.
+              schema:
+                type: integer
+            RateLimit-Reset:
+              description: Seconds until the window resets.
+              schema:
+                type: integer
+            X-Request-Id:
+              description: This request's id.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Bucket'
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        403:
+          description: '`INSUFFICIENT_SCOPE`: the API key lacks the scope this endpoint needs. Use a key with that scope.
+
+            `FORBIDDEN`: the member who created the key may not do this in the organization. Use a key created by an owner
+            or admin.
+
+            `AI_APPS_DISABLED`: the organization has turned AI app access off. An owner can turn it on in the console under
+            Organization › AI apps.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        404:
+          description: '`NOT_FOUND`: no bucket with this id exists in your organization. List your buckets to find it.
+
+            `BUCKET_NOT_FOUND`: no bucket with this id exists in your organization.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        429:
+          $ref: '#/components/responses/RateLimited'
+        503:
+          description: '`OBJECT_STORAGE_UNAVAILABLE`: object storage is not available right now. Retry shortly.
+
+            `QUOTA_UNAVAILABLE`: request quotas cannot be checked right now. Retry shortly.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    patch:
+      tags:
+      - Object storage
+      summary: Change a bucket
+      description: 'Changes only the fields sent: the quota, versioning, or the public prefixes (anyone may read objects under
+        them; an empty list makes the bucket wholly private). `state` is `updating` until the change is applied, usually within
+        seconds.
+
+
+        **Idempotency:** a retry with the same `Idempotency-Key` returns the first result.
+
+
+        **Scope:** `write`.'
+      operationId: updateBucket
+      security:
+      - apiKey: []
+      x-scope: write
+      x-order: 457
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        description: The bucket's id, starting `bkt_`.
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBucketRequest'
+      responses:
+        200:
+          description: The bucket.
+          headers:
+            RateLimit-Limit:
+              description: Requests allowed per window for this key.
+              schema:
+                type: integer
+            RateLimit-Remaining:
+              description: Requests left in this window.
+              schema:
+                type: integer
+            RateLimit-Reset:
+              description: Seconds until the window resets.
+              schema:
+                type: integer
+            X-Request-Id:
+              description: This request's id.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdatedBucket'
+        400:
+          description: '`IDEMPOTENCY_KEY_REQUIRED`: the `Idempotency-Key` header is missing. Send a new unique value, such
+            as a UUID, with every write.
+
+            `INVALID_IDEMPOTENCY_KEY`: the `Idempotency-Key` header is longer than 255 characters. Use a shorter value.
+
+            `INVALID_REQUEST_BODY`: the body is not a single valid JSON object. Send one JSON object with the fields documented
+            for this endpoint.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        403:
+          description: '`INSUFFICIENT_SCOPE`: the API key lacks the scope this endpoint needs. Use a key with that scope.
+
+            `FORBIDDEN`: the member who created the key may not do this in the organization. Use a key created by an owner
+            or admin.
+
+            `AI_APPS_DISABLED`: the organization has turned AI app access off. An owner can turn it on in the console under
+            Organization › AI apps.
+
+            `OBJECT_STORAGE_NOT_ENABLED`: object storage is in closed beta and not enabled for your organization yet.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        404:
+          description: '`NOT_FOUND`: no bucket with this id exists in your organization. List your buckets to find it.
+
+            `BUCKET_NOT_FOUND`: no bucket with this id exists in your organization.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        409:
+          description: '`BUCKET_DELETED`: the bucket has been deleted.
+
+            `IDEMPOTENCY_CONFLICT`: that idempotency key was already used for a different request.
+
+            `CONFLICT`: the bucket changed while the request ran; try again.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        422:
+          description: '`VALIDATION_FAILED`: send `quota_bytes`, `versioning`, `public_prefixes` or several; a bucket with
+            object lock keeps versioning on.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        429:
+          $ref: '#/components/responses/RateLimited'
+        503:
+          description: '`OBJECT_STORAGE_UNAVAILABLE`: object storage is not available right now. Retry shortly.
+
+            `QUOTA_UNAVAILABLE`: request quotas cannot be checked right now. Retry shortly.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    delete:
+      tags:
+      - Object storage
+      summary: Delete a bucket
+      description: 'Deletes the bucket at once: it stops serving and billing. Its objects are deleted and cannot be recovered.
+        A bucket that still holds objects is refused unless `force` is `true`; one holding objects under object lock is always
+        refused.
+
+
+        **Scope:** `write` (an AI app''s key also needs `delete`).'
+      operationId: deleteBucket
+      security:
+      - apiKey: []
+      x-scope: write
+      x-destructive: true
+      x-order: 458
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        description: The bucket's id, starting `bkt_`.
+        schema:
+          type: string
+      - name: force
+        in: query
+        required: false
+        description: Delete the bucket even though it holds objects, which are removed with it.
+        schema:
+          type: boolean
+      - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        202:
+          description: The delete was accepted.
+          headers:
+            RateLimit-Limit:
+              description: Requests allowed per window for this key.
+              schema:
+                type: integer
+            RateLimit-Remaining:
+              description: Requests left in this window.
+              schema:
+                type: integer
+            RateLimit-Reset:
+              description: Seconds until the window resets.
+              schema:
+                type: integer
+            X-Request-Id:
+              description: This request's id.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Accepted'
+        400:
+          description: '`IDEMPOTENCY_KEY_REQUIRED`: the `Idempotency-Key` header is missing. Send a new unique value, such
+            as a UUID, with every write.
+
+            `INVALID_IDEMPOTENCY_KEY`: the `Idempotency-Key` header is longer than 255 characters. Use a shorter value.
+
+            `INVALID_REQUEST_BODY`: the body is not a single valid JSON object. Send one JSON object with the fields documented
+            for this endpoint.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        403:
+          description: '`INSUFFICIENT_SCOPE`: the API key lacks the scope this endpoint needs. Use a key with that scope.
+
+            `FORBIDDEN`: the member who created the key may not do this in the organization. Use a key created by an owner
+            or admin.
+
+            `AI_APPS_DISABLED`: the organization has turned AI app access off. An owner can turn it on in the console under
+            Organization › AI apps.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        404:
+          description: '`NOT_FOUND`: no bucket with this id exists in your organization. List your buckets to find it.
+
+            `BUCKET_NOT_FOUND`: no bucket with this id exists in your organization.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        409:
+          description: '`BUCKET_NOT_EMPTY`: the bucket still holds objects. Empty it first, or delete it with `force=true`.
+
+            `BUCKET_RETENTION`: the bucket holds objects under object lock, which cannot be deleted before their retention
+            ends.
+
+            `IDEMPOTENCY_CONFLICT`: that idempotency key was already used for a different request.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        422:
+          description: '`VALIDATION_FAILED`: `force` must be `true` or `false`.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        429:
+          $ref: '#/components/responses/RateLimited'
+        503:
+          description: '`OBJECT_STORAGE_UNAVAILABLE`: object storage is not available right now. Retry shortly.
+
+            `QUOTA_UNAVAILABLE`: request quotas cannot be checked right now. Retry shortly.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /public/v1/object-storage/keys:
+    get:
+      tags:
+      - Object storage
+      summary: List access keys
+      description: 'Your organization''s object storage access keys that are not revoked, newest first. The secret is shown
+        only when a key is created.
+
+
+        **Scope:** `read`.'
+      operationId: listObjectStorageKeys
+      security:
+      - apiKey: []
+      x-scope: read
+      x-order: 459
+      parameters:
+      - name: region
+        in: query
+        required: false
+        description: The region code, e.g. `af-abj`. Defaults to the region object storage is offered in.
+        schema:
+          type: string
+      responses:
+        200:
+          description: Access keys.
+          headers:
+            RateLimit-Limit:
+              description: Requests allowed per window for this key.
+              schema:
+                type: integer
+            RateLimit-Remaining:
+              description: Requests left in this window.
+              schema:
+                type: integer
+            RateLimit-Reset:
+              description: Seconds until the window resets.
+              schema:
+                type: integer
+            X-Request-Id:
+              description: This request's id.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObjectStorageKeyList'
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        403:
+          description: '`INSUFFICIENT_SCOPE`: the API key lacks the scope this endpoint needs. Use a key with that scope.
+
+            `FORBIDDEN`: the member who created the key may not do this in the organization. Use a key created by an owner
+            or admin.
+
+            `AI_APPS_DISABLED`: the organization has turned AI app access off. An owner can turn it on in the console under
+            Organization › AI apps.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        422:
+          description: '`OBJECT_STORAGE_REGION_UNAVAILABLE`: object storage is not offered in this region.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        429:
+          $ref: '#/components/responses/RateLimited'
+        503:
+          description: '`OBJECT_STORAGE_UNAVAILABLE`: object storage is not available right now. Retry shortly.
+
+            `QUOTA_UNAVAILABLE`: request quotas cannot be checked right now. Retry shortly.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    post:
+      tags:
+      - Object storage
+      summary: Create an access key
+      description: 'Creates an S3 access key for any S3 tool (AWS CLI, rclone, s3cmd, SDKs). The secret is in this response
+        only and is never shown again; store it now. A key may be limited to some buckets and to reading. Keys cannot create
+        or delete buckets; use this API for that.
+
+
+        **Idempotency:** a retry is not replayed: it creates another key. If a request may have gone through, list the keys
+        and revoke one you did not receive.
+
+
+        **Scope:** `write`.'
+      operationId: createObjectStorageKey
+      security:
+      - apiKey: []
+      x-scope: write
+      x-order: 460
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateObjectStorageKeyRequest'
+      responses:
+        201:
+          description: The key, with its secret.
+          headers:
+            RateLimit-Limit:
+              description: Requests allowed per window for this key.
+              schema:
+                type: integer
+            RateLimit-Remaining:
+              description: Requests left in this window.
+              schema:
+                type: integer
+            RateLimit-Reset:
+              description: Seconds until the window resets.
+              schema:
+                type: integer
+            X-Request-Id:
+              description: This request's id.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedObjectStorageKey'
+        400:
+          description: '`IDEMPOTENCY_KEY_REQUIRED`: the `Idempotency-Key` header is missing. Send a new unique value, such
+            as a UUID, with every write.
+
+            `INVALID_IDEMPOTENCY_KEY`: the `Idempotency-Key` header is longer than 255 characters. Use a shorter value.
+
+            `INVALID_REQUEST_BODY`: the body is not a single valid JSON object. Send one JSON object with the fields documented
+            for this endpoint.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        403:
+          description: '`INSUFFICIENT_SCOPE`: the API key lacks the scope this endpoint needs. Use a key with that scope.
+
+            `FORBIDDEN`: the member who created the key may not do this in the organization. Use a key created by an owner
+            or admin.
+
+            `AI_APPS_DISABLED`: the organization has turned AI app access off. An owner can turn it on in the console under
+            Organization › AI apps.
+
+            `OBJECT_STORAGE_NOT_ENABLED`: object storage is in closed beta and not enabled for your organization yet.
+
+            `OBJECT_STORAGE_KEY_LIMIT_REACHED`: the organization already has the most access keys allowed. Revoke one first.
+
+            `OBJECT_STORAGE_SUSPENDED`: object storage is suspended for this organization.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        409:
+          description: '`OBJECT_STORAGE_KEY_NAME_TAKEN`: the organization already has an access key with that name in this
+            region.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        422:
+          description: '`VALIDATION_FAILED`: `name` must be 1 to 64 letters, digits, `-`, `_` or `.`; name at most 100 `buckets`,
+            each once.
+
+            `OBJECT_STORAGE_REGION_UNAVAILABLE`: object storage is not offered in this region.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        429:
+          $ref: '#/components/responses/RateLimited'
+        503:
+          description: '`OBJECT_STORAGE_UNAVAILABLE`: object storage is not available right now. Retry shortly.
+
+            `QUOTA_UNAVAILABLE`: request quotas cannot be checked right now. Retry shortly.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /public/v1/object-storage/keys/{storage_key_id}:
+    delete:
+      tags:
+      - Object storage
+      summary: Revoke an access key
+      description: 'The key stops working before this returns. Works even when object storage is not enabled for your organization.
+
+
+        **Scope:** `write` (an AI app''s key also needs `delete`).'
+      operationId: revokeObjectStorageKey
+      security:
+      - apiKey: []
+      x-scope: write
+      x-destructive: true
+      x-order: 461
+      parameters:
+      - name: storage_key_id
+        in: path
+        required: true
+        description: The access key's id, starting `osk_`.
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        204:
+          description: The key is revoked.
+        400:
+          description: '`IDEMPOTENCY_KEY_REQUIRED`: the `Idempotency-Key` header is missing. Send a new unique value, such
+            as a UUID, with every write.
+
+            `INVALID_IDEMPOTENCY_KEY`: the `Idempotency-Key` header is longer than 255 characters. Use a shorter value.
+
+            `INVALID_REQUEST_BODY`: the body is not a single valid JSON object. Send one JSON object with the fields documented
+            for this endpoint.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        403:
+          description: '`INSUFFICIENT_SCOPE`: the API key lacks the scope this endpoint needs. Use a key with that scope.
+
+            `FORBIDDEN`: the member who created the key may not do this in the organization. Use a key created by an owner
+            or admin.
+
+            `AI_APPS_DISABLED`: the organization has turned AI app access off. An owner can turn it on in the console under
+            Organization › AI apps.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        404:
+          description: '`NOT_FOUND`: no access key with this id exists in your organization.
+
+            `OBJECT_STORAGE_KEY_NOT_FOUND`: no access key with this id exists in your organization.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        429:
+          $ref: '#/components/responses/RateLimited'
+        503:
+          description: '`OBJECT_STORAGE_UNAVAILABLE`: object storage is not available right now. Retry shortly.
+
+            `QUOTA_UNAVAILABLE`: request quotas cannot be checked right now. Retry shortly.'
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /public/v1/object-storage/usage:
+    get:
+      tags:
+      - Object storage
+      summary: Object storage transfer and request usage
+      description: 'Hourly transfer and request counts for your organization.
+
+
+        **Scope:** `read`.'
+      operationId: getObjectStorageUsage
+      security:
+      - apiKey: []
+      x-scope: read
+      x-order: 462
+      parameters:
+      - name: range
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - 24h
+          - 7d
+          - 30d
+      responses:
+        200:
+          description: Hourly usage summary.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - range
+                - total_bytes_sent
+                - total_bytes_received
+                - total_read_ops
+                - total_write_ops
+                - hours
+                properties:
+                  range:
+                    type: string
+                  total_bytes_sent:
+                    type: integer
+                    format: int64
+                  total_bytes_received:
+                    type: integer
+                    format: int64
+                  total_read_ops:
+                    type: integer
+                    format: int64
+                  total_write_ops:
+                    type: integer
+                    format: int64
+                  hours:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - hour
+                      - bytes_sent
+                      - bytes_received
+                      - read_ops
+                      - write_ops
+                      properties:
+                        hour:
+                          type: string
+                          format: date-time
+                        bytes_sent:
+                          type: integer
+                          format: int64
+                        bytes_received:
+                          type: integer
+                          format: int64
+                        read_ops:
+                          type: integer
+                          format: int64
+                        write_ops:
+                          type: integer
+                          format: int64
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+  /public/v1/buckets/{bucket_id}/stats:
+    get:
+      tags:
+      - Object storage
+      summary: Bucket storage stats
+      description: 'Live stored bytes and object count for the bucket.
+
+
+        **Scope:** `read`.'
+      operationId: getBucketStats
+      security:
+      - apiKey: []
+      x-scope: read
+      x-order: 463
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: Bucket stats.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - size_bytes
+                - object_count
+                properties:
+                  size_bytes:
+                    type: integer
+                    format: int64
+                  object_count:
+                    type: integer
+                    format: int64
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+  /public/v1/buckets/{bucket_id}/empty:
+    post:
+      tags:
+      - Object storage
+      summary: Empty a bucket
+      description: 'Deletes all objects, previous versions and delete markers and aborts incomplete multipart uploads.
+
+
+        **Scope:** `write` (an AI app''s key also needs `delete`).'
+      operationId: emptyBucket
+      security:
+      - apiKey: []
+      x-scope: write
+      x-destructive: true
+      x-order: 464
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        200:
+          description: Empty summary.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - deleted_count
+                - aborted_uploads
+                - locked_count
+                - sample_locked_keys
+                properties:
+                  deleted_count:
+                    type: integer
+                  aborted_uploads:
+                    type: integer
+                  locked_count:
+                    type: integer
+                  sample_locked_keys:
+                    type: array
+                    items:
+                      type: string
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+  /public/v1/buckets/{bucket_id}/objects:
+    get:
+      tags:
+      - Object storage
+      summary: List or search bucket objects and folders
+      description: 'Lists folders and objects under a prefix, searches across the bucket, or lists object versions.
+
+
+        **Scope:** `read`.'
+      operationId: listBucketObjects
+      security:
+      - apiKey: []
+      x-scope: read
+      x-order: 465
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: prefix
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: delimiter
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+      - name: versions
+        in: query
+        required: false
+        schema:
+          type: boolean
+      responses:
+        200:
+          description: Folders and objects or versions.
+          content:
+            application/json:
+              schema:
+                type: object
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+  /public/v1/buckets/{bucket_id}/objects/meta:
+    get:
+      tags:
+      - Object storage
+      summary: Get object properties, metadata, tags and lock status
+      description: 'Reads metadata, tags and object-lock status for one object.
+
+
+        **Scope:** `read`.'
+      operationId: getBucketObjectMeta
+      security:
+      - apiKey: []
+      x-scope: read
+      x-order: 466
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: key
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: version_id
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        200:
+          description: Object details.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - key
+                - size_bytes
+                - etag
+                - content_type
+                - cache_control
+                - content_disposition
+                - last_modified
+                - storage_class
+                - version_id
+                - metadata
+                - tags
+                - retention_mode
+                - retain_until
+                - legal_hold
+                - public
+                - object_public
+                - public_source
+                - public_url
+                properties:
+                  key:
+                    type: string
+                  size_bytes:
+                    type: integer
+                    format: int64
+                  etag:
+                    type: string
+                  content_type:
+                    type: string
+                  cache_control:
+                    type: string
+                  content_disposition:
+                    type: string
+                  last_modified:
+                    type: string
+                    format: date-time
+                  storage_class:
+                    type: string
+                  version_id:
+                    type: string
+                  metadata:
+                    type: object
+                  tags:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - key
+                      - value
+                      properties:
+                        key:
+                          type: string
+                        value:
+                          type: string
+                  retention_mode:
+                    type: string
+                  retain_until:
+                    type:
+                    - string
+                    - 'null'
+                    format: date-time
+                  legal_hold:
+                    type: boolean
+                  public:
+                    type: boolean
+                  object_public:
+                    type: boolean
+                  public_source:
+                    type: string
+                    enum:
+                    - private
+                    - object
+                    - bucket_prefix
+                  public_url:
+                    type: string
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+  /public/v1/buckets/{bucket_id}/objects/download:
+    get:
+      tags:
+      - Object storage
+      summary: Download an object
+      description: 'Streams the object''s content.
+
+
+        **Scope:** `read`.'
+      operationId: downloadBucketObject
+      security:
+      - apiKey: []
+      x-scope: read
+      x-order: 467
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: key
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: version_id
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: inline
+        in: query
+        required: false
+        schema:
+          type: boolean
+      responses:
+        200:
+          description: Object content stream.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+  /public/v1/buckets/{bucket_id}/objects/download-url:
+    post:
+      tags:
+      - Object storage
+      summary: Request a short-lived direct download URL
+      description: 'Mints a short-lived signed download URL when direct transfers are enabled.
+
+
+        **Scope:** `read`.'
+      operationId: presignBucketObjectDownload
+      security:
+      - apiKey: []
+      x-scope: read
+      x-order: 468
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - key
+              properties:
+                key:
+                  type: string
+                version_id:
+                  type: string
+                inline:
+                  type: boolean
+                expires_in_seconds:
+                  type: integer
+                  minimum: 60
+                  maximum: 604800
+      responses:
+        200:
+          description: Direct download URL or proxy indicator.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - direct
+                - url
+                - expires_in_seconds
+                properties:
+                  direct:
+                    type: boolean
+                  url:
+                    type: string
+                  expires_in_seconds:
+                    type: integer
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+  /public/v1/buckets/{bucket_id}/objects/upload:
+    put:
+      tags:
+      - Object storage
+      summary: Upload an object
+      description: 'Streams an object upload into the bucket.
+
+
+        **Scope:** `write`.'
+      operationId: uploadBucketObject
+      security:
+      - apiKey: []
+      x-scope: write
+      x-order: 469
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: key
+        in: query
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        200:
+          description: Uploaded object summary.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - key
+                - size_bytes
+                - etag
+                - content_type
+                - last_modified
+                - version_id
+                - public
+                - object_public
+                - public_source
+                - public_url
+                properties:
+                  key:
+                    type: string
+                  size_bytes:
+                    type: integer
+                    format: int64
+                  etag:
+                    type: string
+                  content_type:
+                    type: string
+                  last_modified:
+                    type: string
+                    format: date-time
+                  version_id:
+                    type: string
+                  public:
+                    type: boolean
+                  object_public:
+                    type: boolean
+                  public_source:
+                    type: string
+                    enum:
+                    - private
+                    - object
+                    - bucket_prefix
+                  public_url:
+                    type: string
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+  /public/v1/buckets/{bucket_id}/objects/upload-url:
+    post:
+      tags:
+      - Object storage
+      summary: Request a short-lived direct upload URL
+      description: 'Mints a short-lived signed upload URL when direct transfers are enabled.
+
+
+        **Scope:** `write`.'
+      operationId: presignBucketObjectUpload
+      security:
+      - apiKey: []
+      x-scope: write
+      x-order: 470
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - key
+              properties:
+                key:
+                  type: string
+                content_type:
+                  type: string
+      responses:
+        200:
+          description: Direct upload URL or proxy indicator.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - direct
+                - url
+                - expires_in_seconds
+                properties:
+                  direct:
+                    type: boolean
+                  url:
+                    type: string
+                  expires_in_seconds:
+                    type: integer
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+  /public/v1/buckets/{bucket_id}/objects/folder:
+    post:
+      tags:
+      - Object storage
+      summary: Create a folder prefix
+      description: 'Creates an empty folder marker under the given prefix.
+
+
+        **Scope:** `write`.'
+      operationId: createBucketFolder
+      security:
+      - apiKey: []
+      x-scope: write
+      x-order: 471
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - prefix
+              properties:
+                prefix:
+                  type: string
+      responses:
+        200:
+          description: Folder created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - prefix
+                properties:
+                  prefix:
+                    type: string
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+  /public/v1/buckets/{bucket_id}/objects/copy:
+    post:
+      tags:
+      - Object storage
+      summary: Copy, rename or update metadata on an object
+      description: 'Copies or moves an object inside the bucket, optionally replacing its metadata.
+
+
+        **Scope:** `write`.'
+      operationId: copyBucketObject
+      security:
+      - apiKey: []
+      x-scope: write
+      x-order: 472
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - source_key
+              - destination_key
+              properties:
+                source_key:
+                  type: string
+                destination_key:
+                  type: string
+                delete_source:
+                  type: boolean
+                replace_metadata:
+                  type: boolean
+                content_type:
+                  type: string
+                cache_control:
+                  type: string
+                content_disposition:
+                  type: string
+                metadata:
+                  type: object
+      responses:
+        200:
+          description: Copied object summary.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - key
+                - etag
+                - version_id
+                - last_modified
+                - public
+                - object_public
+                - public_source
+                - public_url
+                properties:
+                  key:
+                    type: string
+                  etag:
+                    type: string
+                  version_id:
+                    type: string
+                  last_modified:
+                    type: string
+                    format: date-time
+                  public:
+                    type: boolean
+                  object_public:
+                    type: boolean
+                  public_source:
+                    type: string
+                    enum:
+                    - private
+                    - object
+                    - bucket_prefix
+                  public_url:
+                    type: string
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+  /public/v1/buckets/{bucket_id}/objects/delete:
+    post:
+      tags:
+      - Object storage
+      summary: Delete objects, versions or a folder prefix
+      description: 'Deletes selected objects, versions or all objects under a folder prefix.
+
+
+        **Scope:** `write` (an AI app''s key also needs `delete`).'
+      operationId: deleteBucketObjects
+      security:
+      - apiKey: []
+      x-scope: write
+      x-destructive: true
+      x-order: 473
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                    - key
+                    properties:
+                      key:
+                        type: string
+                      version_id:
+                        type: string
+                recursive_prefix:
+                  type: string
+      responses:
+        200:
+          description: Delete summary.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - deleted
+                - failed
+                properties:
+                  deleted:
+                    type: integer
+                  failed:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - key
+                      - version_id
+                      - code
+                      - locked
+                      properties:
+                        key:
+                          type: string
+                        version_id:
+                          type: string
+                        code:
+                          type: string
+                        locked:
+                          type: boolean
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+  /public/v1/buckets/{bucket_id}/objects/tags:
+    put:
+      tags:
+      - Object storage
+      summary: Replace tags on an object
+      description: 'Replaces key-value tags on an object or version.
+
+
+        **Scope:** `write`.'
+      operationId: putBucketObjectTags
+      security:
+      - apiKey: []
+      x-scope: write
+      x-order: 474
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - key
+              - tags
+              properties:
+                key:
+                  type: string
+                version_id:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                    - key
+                    - value
+                    properties:
+                      key:
+                        type: string
+                      value:
+                        type: string
+      responses:
+        200:
+          description: Object tags updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - tags
+                properties:
+                  tags:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - key
+                      - value
+                      properties:
+                        key:
+                          type: string
+                        value:
+                          type: string
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+  /public/v1/buckets/{bucket_id}/objects/lock:
+    put:
+      tags:
+      - Object storage
+      summary: Update retention or legal hold on an object
+      description: 'Sets object-lock retention or legal hold on an object version.
+
+
+        **Scope:** `write`.'
+      operationId: setBucketObjectLock
+      security:
+      - apiKey: []
+      x-scope: write
+      x-order: 475
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - key
+              properties:
+                key:
+                  type: string
+                version_id:
+                  type: string
+                retention_mode:
+                  type: string
+                  enum:
+                  - GOVERNANCE
+                  - COMPLIANCE
+                retain_until:
+                  type: string
+                  format: date-time
+                bypass_governance:
+                  type: boolean
+                legal_hold:
+                  type: boolean
+      responses:
+        200:
+          description: Object lock updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - ok
+                properties:
+                  ok:
+                    type: boolean
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+  /public/v1/buckets/{bucket_id}/objects/visibility:
+    put:
+      tags:
+      - Object storage
+      summary: Set an object's public or private visibility
+      description: 'Toggles an individual object between private and public read access without changing bucket-wide rules.
+
+
+        **Scope:** `write`.'
+      operationId: putBucketObjectVisibility
+      security:
+      - apiKey: []
+      x-scope: write
+      x-order: 476
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - key
+              - public
+              properties:
+                key:
+                  type: string
+                version_id:
+                  type: string
+                public:
+                  type: boolean
+      responses:
+        200:
+          description: Object visibility updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - key
+                - public
+                - object_public
+                - public_source
+                - public_url
+                properties:
+                  key:
+                    type: string
+                  public:
+                    type: boolean
+                  object_public:
+                    type: boolean
+                  public_source:
+                    type: string
+                    enum:
+                    - private
+                    - object
+                    - bucket_prefix
+                  public_url:
+                    type: string
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+  /public/v1/buckets/{bucket_id}/objects/multipart/start:
+    post:
+      tags:
+      - Object storage
+      summary: Start a multipart upload
+      description: 'Initiates a multipart upload and reports whether parts upload directly or via chunked streaming.
+
+
+        **Scope:** `write`.'
+      operationId: startBucketMultipartUpload
+      security:
+      - apiKey: []
+      x-scope: write
+      x-order: 476
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - key
+              properties:
+                key:
+                  type: string
+                content_type:
+                  type: string
+                cache_control:
+                  type: string
+                content_disposition:
+                  type: string
+                metadata:
+                  type: object
+                total_size:
+                  type: integer
+                  format: int64
+                public:
+                  type: boolean
+      responses:
+        200:
+          description: Multipart upload session.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - upload_id
+                - mode
+                - part_size_bytes
+                properties:
+                  upload_id:
+                    type: string
+                  mode:
+                    type: string
+                  part_size_bytes:
+                    type: integer
+                    format: int64
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+  /public/v1/buckets/{bucket_id}/objects/multipart/sign-part:
+    post:
+      tags:
+      - Object storage
+      summary: Sign a direct upload URL for one multipart part
+      description: 'Returns a short-lived signed PUT URL for uploading one part directly to the bucket.
+
+
+        **Scope:** `write`.'
+      operationId: signBucketMultipartPart
+      security:
+      - apiKey: []
+      x-scope: write
+      x-order: 477
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - key
+              - upload_id
+              - part_number
+              properties:
+                key:
+                  type: string
+                upload_id:
+                  type: string
+                part_number:
+                  type: integer
+                  minimum: 1
+      responses:
+        200:
+          description: Signed part URL.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - direct
+                - url
+                - expires_in_seconds
+                properties:
+                  direct:
+                    type: boolean
+                  url:
+                    type: string
+                  expires_in_seconds:
+                    type: integer
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+  /public/v1/buckets/{bucket_id}/objects/multipart/part:
+    put:
+      tags:
+      - Object storage
+      summary: Upload one multipart part
+      description: 'Uploads one part of an active multipart upload.
+
+
+        **Scope:** `write`.'
+      operationId: uploadBucketMultipartPart
+      security:
+      - apiKey: []
+      x-scope: write
+      x-order: 478
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: key
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: upload_id
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: part_number
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        200:
+          description: Part uploaded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - part_number
+                - etag
+                properties:
+                  part_number:
+                    type: integer
+                  etag:
+                    type: string
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+  /public/v1/buckets/{bucket_id}/objects/multipart/complete:
+    post:
+      tags:
+      - Object storage
+      summary: Complete a multipart upload
+      description: 'Assembles uploaded parts into the final object.
+
+
+        **Scope:** `write`.'
+      operationId: completeBucketMultipartUpload
+      security:
+      - apiKey: []
+      x-scope: write
+      x-order: 479
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - key
+              - upload_id
+              - parts
+              properties:
+                key:
+                  type: string
+                upload_id:
+                  type: string
+                parts:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                    - part_number
+                    - etag
+                    properties:
+                      part_number:
+                        type: integer
+                        minimum: 1
+                      etag:
+                        type: string
+      responses:
+        200:
+          description: Object assembled.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - key
+                - etag
+                - version_id
+                - last_modified
+                - public
+                - object_public
+                - public_source
+                - public_url
+                properties:
+                  key:
+                    type: string
+                  etag:
+                    type: string
+                  version_id:
+                    type: string
+                  last_modified:
+                    type: string
+                    format: date-time
+                  public:
+                    type: boolean
+                  object_public:
+                    type: boolean
+                  public_source:
+                    type: string
+                    enum:
+                    - private
+                    - object
+                    - bucket_prefix
+                  public_url:
+                    type: string
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+  /public/v1/buckets/{bucket_id}/objects/multipart/abort:
+    post:
+      tags:
+      - Object storage
+      summary: Abort a multipart upload
+      description: 'Cancels an in-progress multipart upload and discards uploaded parts.
+
+
+        **Scope:** `write`.'
+      operationId: abortBucketMultipartUpload
+      security:
+      - apiKey: []
+      x-scope: write
+      x-order: 480
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - key
+              - upload_id
+              properties:
+                key:
+                  type: string
+                upload_id:
+                  type: string
+      responses:
+        204:
+          description: Upload aborted.
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+  /public/v1/buckets/{bucket_id}/cors:
+    get:
+      tags:
+      - Object storage
+      summary: Get bucket CORS rules
+      description: 'Returns the bucket''s cross-origin resource sharing rules.
+
+
+        **Scope:** `read`.'
+      operationId: getBucketCORS
+      security:
+      - apiKey: []
+      x-scope: read
+      x-order: 481
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: CORS rules.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - rules
+                properties:
+                  rules:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - id
+                      - allowed_origins
+                      - allowed_methods
+                      - allowed_headers
+                      - expose_headers
+                      - max_age_seconds
+                      properties:
+                        id:
+                          type: string
+                        allowed_origins:
+                          type: array
+                          items:
+                            type: string
+                        allowed_methods:
+                          type: array
+                          items:
+                            type: string
+                        allowed_headers:
+                          type: array
+                          items:
+                            type: string
+                        expose_headers:
+                          type: array
+                          items:
+                            type: string
+                        max_age_seconds:
+                          type: integer
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+    put:
+      tags:
+      - Object storage
+      summary: Replace bucket CORS rules
+      description: 'Replaces the bucket''s cross-origin resource sharing rules.
+
+
+        **Scope:** `write`.'
+      operationId: putBucketCORS
+      security:
+      - apiKey: []
+      x-scope: write
+      x-order: 482
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - rules
+              properties:
+                rules:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                    - id
+                    - allowed_origins
+                    - allowed_methods
+                    - allowed_headers
+                    - expose_headers
+                    - max_age_seconds
+                    properties:
+                      id:
+                        type: string
+                      allowed_origins:
+                        type: array
+                        items:
+                          type: string
+                      allowed_methods:
+                        type: array
+                        items:
+                          type: string
+                          enum:
+                          - GET
+                          - PUT
+                          - POST
+                          - DELETE
+                          - HEAD
+                      allowed_headers:
+                        type: array
+                        items:
+                          type: string
+                      expose_headers:
+                        type: array
+                        items:
+                          type: string
+                      max_age_seconds:
+                        type: integer
+                        minimum: 0
+      responses:
+        200:
+          description: CORS rules updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - rules
+                properties:
+                  rules:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - id
+                      - allowed_origins
+                      - allowed_methods
+                      - allowed_headers
+                      - expose_headers
+                      - max_age_seconds
+                      properties:
+                        id:
+                          type: string
+                        allowed_origins:
+                          type: array
+                          items:
+                            type: string
+                        allowed_methods:
+                          type: array
+                          items:
+                            type: string
+                        allowed_headers:
+                          type: array
+                          items:
+                            type: string
+                        expose_headers:
+                          type: array
+                          items:
+                            type: string
+                        max_age_seconds:
+                          type: integer
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+  /public/v1/buckets/{bucket_id}/lifecycle:
+    get:
+      tags:
+      - Object storage
+      summary: Get bucket lifecycle rules
+      description: 'Returns the bucket''s expiration and cleanup rules.
+
+
+        **Scope:** `read`.'
+      operationId: getBucketLifecycle
+      security:
+      - apiKey: []
+      x-scope: read
+      x-order: 483
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: Lifecycle rules.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - rules
+                properties:
+                  rules:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - id
+                      - prefix
+                      - enabled
+                      - expiration_days
+                      - noncurrent_expiration_days
+                      - abort_incomplete_multipart_days
+                      - expired_object_delete_marker
+                      properties:
+                        id:
+                          type: string
+                        prefix:
+                          type: string
+                        enabled:
+                          type: boolean
+                        expiration_days:
+                          type: integer
+                        noncurrent_expiration_days:
+                          type: integer
+                        abort_incomplete_multipart_days:
+                          type: integer
+                        expired_object_delete_marker:
+                          type: boolean
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+    put:
+      tags:
+      - Object storage
+      summary: Replace bucket lifecycle rules
+      description: 'Replaces the bucket''s expiration and cleanup rules.
+
+
+        **Scope:** `write`.'
+      operationId: putBucketLifecycle
+      security:
+      - apiKey: []
+      x-scope: write
+      x-order: 484
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - rules
+              properties:
+                rules:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                    - id
+                    - prefix
+                    - enabled
+                    - expiration_days
+                    - noncurrent_expiration_days
+                    - abort_incomplete_multipart_days
+                    - expired_object_delete_marker
+                    properties:
+                      id:
+                        type: string
+                      prefix:
+                        type: string
+                      enabled:
+                        type: boolean
+                      expiration_days:
+                        type: integer
+                        minimum: 1
+                      noncurrent_expiration_days:
+                        type: integer
+                        minimum: 0
+                      abort_incomplete_multipart_days:
+                        type: integer
+                        minimum: 0
+                      expired_object_delete_marker:
+                        type: boolean
+      responses:
+        200:
+          description: Lifecycle rules updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - rules
+                properties:
+                  rules:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - id
+                      - prefix
+                      - enabled
+                      - expiration_days
+                      - noncurrent_expiration_days
+                      - abort_incomplete_multipart_days
+                      - expired_object_delete_marker
+                      properties:
+                        id:
+                          type: string
+                        prefix:
+                          type: string
+                        enabled:
+                          type: boolean
+                        expiration_days:
+                          type: integer
+                        noncurrent_expiration_days:
+                          type: integer
+                        abort_incomplete_multipart_days:
+                          type: integer
+                        expired_object_delete_marker:
+                          type: boolean
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+  /public/v1/buckets/{bucket_id}/tags:
+    get:
+      tags:
+      - Object storage
+      summary: Get bucket tags
+      description: 'Returns key-value tags set on the bucket.
+
+
+        **Scope:** `read`.'
+      operationId: getBucketTags
+      security:
+      - apiKey: []
+      x-scope: read
+      x-order: 485
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: Bucket tags.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - tags
+                properties:
+                  tags:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - key
+                      - value
+                      properties:
+                        key:
+                          type: string
+                        value:
+                          type: string
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+    put:
+      tags:
+      - Object storage
+      summary: Replace bucket tags
+      description: 'Replaces key-value tags on the bucket.
+
+
+        **Scope:** `write`.'
+      operationId: putBucketTags
+      security:
+      - apiKey: []
+      x-scope: write
+      x-order: 486
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - tags
+              properties:
+                tags:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                    - key
+                    - value
+                    properties:
+                      key:
+                        type: string
+                      value:
+                        type: string
+      responses:
+        200:
+          description: Bucket tags updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - tags
+                properties:
+                  tags:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                      - key
+                      - value
+                      properties:
+                        key:
+                          type: string
+                        value:
+                          type: string
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+  /public/v1/buckets/{bucket_id}/object-lock:
+    get:
+      tags:
+      - Object storage
+      summary: Get bucket default object-lock retention
+      description: 'Returns default retention settings for an object-lock bucket.
+
+
+        **Scope:** `read`.'
+      operationId: getBucketObjectLock
+      security:
+      - apiKey: []
+      x-scope: read
+      x-order: 487
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: Object lock default retention.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - enabled
+                - mode
+                - days
+                - years
+                properties:
+                  enabled:
+                    type: boolean
+                  mode:
+                    type: string
+                  days:
+                    type: integer
+                  years:
+                    type: integer
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+    put:
+      tags:
+      - Object storage
+      summary: Set bucket default object-lock retention
+      description: 'Sets default retention settings for an object-lock bucket.
+
+
+        **Scope:** `write`.'
+      operationId: putBucketObjectLock
+      security:
+      - apiKey: []
+      x-scope: write
+      x-order: 488
+      parameters:
+      - name: bucket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - enabled
+              - mode
+              - days
+              - years
+              properties:
+                enabled:
+                  type: boolean
+                mode:
+                  type: string
+                  enum:
+                  - GOVERNANCE
+                  - COMPLIANCE
+                days:
+                  type: integer
+                  minimum: 1
+                years:
+                  type: integer
+                  minimum: 0
+      responses:
+        200:
+          description: Object lock default retention updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - enabled
+                - mode
+                - days
+                - years
+                properties:
+                  enabled:
+                    type: boolean
+                  mode:
+                    type: string
+                  days:
+                    type: integer
+                  years:
+                    type: integer
+        401:
+          $ref: '#/components/responses/Unauthenticated'
+        429:
+          $ref: '#/components/responses/RateLimited'
+components:
+  schemas:
+    Bucket:
+      type: object
+      description: A bucket.
+      required:
+      - id
+      - name
+      - region
+      - endpoint
+      - quota_bytes
+      - versioning
+      - object_lock
+      - public_prefixes
+      - state
+      - created_at
+      properties:
+        id:
+          type: string
+          description: The bucket's id, starting `bkt_`.
+        name:
+          type: string
+          description: The bucket's name, used in S3 requests.
+          examples:
+          - assets
+        region:
+          type: string
+          description: The region code.
+          examples:
+          - af-abj
+        endpoint:
+          type: string
+          description: 'The S3 endpoint to send requests to, path-style: `<endpoint>/<name>/<key>`.'
+          examples:
+          - https://s3.af-abj.pantechdynamics.com
+        quota_bytes:
+          type: integer
+          format: int64
+          description: Your own limit on the bucket's stored bytes; 0 is none.
+        size_bytes:
+          type: integer
+          format: int64
+          description: Live stored bytes in the bucket.
+        object_count:
+          type: integer
+          format: int64
+          description: Live object count in the bucket.
+        versioning:
+          type: boolean
+          description: Whether overwritten and deleted objects keep their earlier versions.
+        object_lock:
+          type: boolean
+          description: Whether objects can be locked against deletion. Chosen at create only.
+        public_prefixes:
+          type: array
+          items:
+            type: string
+          description: Key prefixes anyone may read without a key, sorted. Empty is wholly private.
+        state:
+          type: string
+          enum:
+          - provisioning
+          - active
+          - updating
+          - deleting
+          - failed
+          - unknown
+          description: '`provisioning` until the bucket can be used, `updating` while a change is applied.'
+        created_at:
+          type: string
+          format: date-time
+          description: When it was created.
+        retired_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: When deletion started; null while the bucket is active.
+        purge_due_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: When the 12-hour removal completes and the name becomes available again.
+    BucketList:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Bucket'
+    CreateBucketRequest:
+      type: object
+      required:
+      - name
+      properties:
+        name:
+          type: string
+          description: 3 to 63 lowercase letters, digits and hyphens, starting and ending with a letter or digit. Unique in
+            your organization and region.
+          examples:
+          - assets
+        region:
+          type: string
+          description: The region code. Defaults to the region object storage is offered in.
+          examples:
+          - af-abj
+        quota_bytes:
+          type: integer
+          format: int64
+          description: Your own limit on stored bytes; 0 or absent is none.
+        versioning:
+          type: boolean
+          description: Keep earlier versions of overwritten and deleted objects. Versions count as stored data.
+        object_lock:
+          type: boolean
+          description: Allow objects to be locked against deletion. Only at create, and it turns versioning on.
+        public_prefixes:
+          type: array
+          items:
+            type: string
+          description: Key prefixes anyone may read without a key, e.g. `public/`. At most 20.
+    CreateObjectStorageKeyRequest:
+      type: object
+      required:
+      - name
+      properties:
+        name:
+          type: string
+          description: 1 to 64 letters, digits, `-`, `_` or `.`. Unique among your live keys.
+          examples:
+          - backups
+        region:
+          type: string
+          description: The region code. Defaults to the region object storage is offered in.
+        read_only:
+          type: boolean
+          description: Allow only reading and listing.
+        buckets:
+          type: array
+          items:
+            type: string
+          description: Limit the key to these bucket names; absent or empty is every bucket. At most 100.
+    CreatedBucket:
+      description: The new bucket and the operation creating it.
+      allOf:
+      - $ref: '#/components/schemas/Bucket'
+      - type: object
+        required:
+        - operation_id
+        properties:
+          operation_id:
+            type: string
+            description: The operation creating the bucket; it succeeds once the bucket is usable.
+    CreatedObjectStorageKey:
+      description: The new key with its secret, shown only now.
+      allOf:
+      - $ref: '#/components/schemas/ObjectStorageKey'
+      - type: object
+        required:
+        - secret_access_key
+        - endpoint
+        properties:
+          secret_access_key:
+            type: string
+            description: 'The secret. Store it now: it is never shown again.'
+          endpoint:
+            type: string
+            description: The S3 endpoint to use the key with.
+    ObjectStorageKey:
+      type: object
+      description: An S3 access key, without its secret.
+      required:
+      - id
+      - name
+      - region
+      - access_key_id
+      - read_only
+      - buckets
+      - created_at
+      properties:
+        id:
+          type: string
+          description: The key's id, starting `osk_`.
+        name:
+          type: string
+          description: The key's name.
+        region:
+          type: string
+          description: The region code.
+        access_key_id:
+          type: string
+          description: The S3 access key id S3 tools sign with.
+        read_only:
+          type: boolean
+          description: Whether the key may only read and list.
+        buckets:
+          type: array
+          items:
+            type: string
+          description: The bucket names the key may use; empty is every bucket.
+        created_at:
+          type: string
+          format: date-time
+          description: When it was created.
+    ObjectStorageKeyList:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObjectStorageKey'
+    ObjectStorageStatus:
+      type: object
+      required:
+      - enabled
+      - endpoint
+      - beta
+      properties:
+        enabled:
+          type: boolean
+          description: Whether your organization may create buckets and keys.
+        endpoint:
+          type: string
+          description: The S3 endpoint for the default region.
+          examples:
+          - https://s3.af-abj.pantechdynamics.com
+        beta:
+          type: boolean
+          description: Object storage is in closed beta.
+        direct_upload_enabled:
+          type: boolean
+          description: Whether direct-to-bucket presigned uploads are enabled.
+        limits:
+          type:
+          - object
+          - 'null'
+          properties:
+            max_buckets:
+              type: integer
+            max_storage_bytes:
+              type: integer
+              format: int64
+            max_objects:
+              type: integer
+              format: int64
+    UpdateBucketRequest:
+      type: object
+      description: Send only what changes.
+      properties:
+        quota_bytes:
+          type: integer
+          format: int64
+          description: Your own limit on stored bytes; 0 removes it.
+        versioning:
+          type: boolean
+          description: Keep earlier versions of overwritten and deleted objects.
+        public_prefixes:
+          type: array
+          items:
+            type: string
+          description: Replaces the public prefixes; an empty list makes the bucket wholly private.
+    UpdatedBucket:
+      description: The bucket and the operation applying the change.
+      allOf:
+      - $ref: '#/components/schemas/Bucket'
+      - type: object
+        required:
+        - operation_id
+        properties:
+          operation_id:
+            type:
+            - string
+            - 'null'
+            description: The operation applying the change; null when nothing changed.

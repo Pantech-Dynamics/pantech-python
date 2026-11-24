@@ -54,6 +54,8 @@ def dummy_args(fn: Callable[..., Any]) -> Tuple[List[Any], Dict[str, Any]]:
             kwargs[name] = 1
         elif ann == "bool":
             kwargs[name] = True
+        elif ann == "bytes":
+            kwargs[name] = b"x"
         else:
             kwargs[name] = "x"
     return args, kwargs
