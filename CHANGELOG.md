@@ -6,6 +6,10 @@ All notable changes to the `pantech` package. The newest version heading
 
 ## Unreleased
 
+FEATURES:
+
+- `databases.get_snapshot_schedule` and `databases.set_snapshot_schedule`: automatic snapshots of a database's data disk, as for instances and volumes. Sync and async.
+
 ## 0.5.0 (2026-11-24)
 
 FEATURES:
