@@ -29,15 +29,24 @@ from ..types._generated import (
     AddressRotation,
     ApplyKubernetesManifestResponse,
     Bucket,
+    BucketImport,
+    BucketImportList,
     BucketList,
     Certificate,
     CertificateList,
+    CloudAgentEnrollment,
+    CloudAzureFederation,
     CloudConnection,
     CloudConnectionList,
+    CloudGCPFederation,
+    CloudHuaweiFederation,
+    CloudProvider,
+    CloudProviderList,
     CloudScan,
     CloudScanList,
     CompleteBucketMultipartUploadBodyPartsItem,
     CompleteBucketMultipartUploadResponse,
+    CopyAccess,
     CopyBucketObjectResponse,
     CreateBucketFolderResponse,
     CreatedBucket,
@@ -49,6 +58,8 @@ from ..types._generated import (
     DatabaseAccessRuleRequest,
     DatabaseEngine,
     DatabaseEngineList,
+    DatabaseImport,
+    DatabaseImportList,
     DatabaseList,
     DatabaseOrder,
     DatabaseOrderAccepted,
@@ -119,6 +130,11 @@ from ..types._generated import (
     KubernetesClusterAddon,
     KubernetesClusterAddonList,
     KubernetesClusterList,
+    KubernetesMove,
+    KubernetesMoveDetail,
+    KubernetesMoveList,
+    KubernetesMoveRef,
+    KubernetesMoveSourceAccess,
     KubernetesNodePool,
     KubernetesNodePoolList,
     KubernetesNodePoolTaint,
@@ -129,6 +145,7 @@ from ..types._generated import (
     Me,
     MetricsSeries,
     Migration,
+    MigrationInvites,
     MigrationList,
     MigrationTerraform,
     MonthlyQuote,
@@ -177,6 +194,10 @@ from ..types._generated import (
     SecurityGroup,
     SecurityGroupList,
     SecurityGroupRule,
+    ServerCopy,
+    ServerCopyAWSSource,
+    ServerCopyList,
+    ServerCopyTemplate,
     SetBucketObjectLockResponse,
     SignBucketMultipartPartResponse,
     Snapshot,
@@ -6336,7 +6357,7 @@ class WebhooksResource(SyncResource):
 
 
 class MigrateConnectionsResource(CloudConnectionWaiter):
-    """Connections to AWS accounts through a read-only role; no access keys are shared."""
+    """Read-only connections to other clouds: through short-lived tokens Pantech signs, or the Migrate agent; no access keys are shared."""
 
     def list(
         self,
@@ -6379,7 +6400,12 @@ class MigrateConnectionsResource(CloudConnectionWaiter):
         self,
         *,
         name: str,
-        provider: Union[Literal["aws"], NotGiven] = NOT_GIVEN,
+        provider: Union[
+            Literal[
+                "aws", "gcp", "azure", "huawei", "digitalocean", "hetzner", "linode", "vultr", "contabo", "openstack"
+            ],
+            NotGiven,
+        ] = NOT_GIVEN,
         idempotency_key: Optional[str] = None,
         extra_headers: Optional[Headers] = None,
         extra_query: Optional[Query] = None,
@@ -6391,7 +6417,7 @@ class MigrateConnectionsResource(CloudConnectionWaiter):
         ``POST /cloud-connections``
 
         Args:
-          provider: `aws`, the default.
+          provider: `aws`, the default, or another provider `GET /cloud-providers` lists.
           name: 1 to 100 characters, for example `Production AWS`.
         """
         return cast(
@@ -6436,6 +6462,9 @@ class MigrateConnectionsResource(CloudConnectionWaiter):
         *,
         name: Union[str, NotGiven] = NOT_GIVEN,
         role_arn: Union[str, NotGiven] = NOT_GIVEN,
+        gcp: Union[CloudGCPFederation, NotGiven] = NOT_GIVEN,
+        azure: Union[CloudAzureFederation, NotGiven] = NOT_GIVEN,
+        huawei: Union[CloudHuaweiFederation, NotGiven] = NOT_GIVEN,
         retry: Union[bool, NotGiven] = NOT_GIVEN,
         idempotency_key: Optional[str] = None,
         extra_headers: Optional[Headers] = None,
@@ -6448,8 +6477,8 @@ class MigrateConnectionsResource(CloudConnectionWaiter):
         ``PATCH /cloud-connections/{connection_id}``
 
         Args:
-          role_arn: The stack's RoleArn output.
-          retry: Check the role again.
+          role_arn: AWS: the stack's RoleArn output.
+          retry: Check the connection again.
         """
         return cast(
             "CloudConnection",
@@ -6457,7 +6486,10 @@ class MigrateConnectionsResource(CloudConnectionWaiter):
                 "PATCH",
                 f"/cloud-connections/{path_param(connection_id)}",
                 query=merge_params({}, extra_query),
-                body=merge_params({"name": name, "role_arn": role_arn, "retry": retry}, extra_body),
+                body=merge_params(
+                    {"name": name, "role_arn": role_arn, "gcp": gcp, "azure": azure, "huawei": huawei, "retry": retry},
+                    extra_body,
+                ),
                 idempotency_key=idempotency_key,
                 extra_headers=extra_headers,
                 timeout=timeout,
@@ -6487,9 +6519,62 @@ class MigrateConnectionsResource(CloudConnectionWaiter):
         )
         return None
 
+    def enroll_agent(
+        self,
+        connection_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> CloudAgentEnrollment:
+        """Enroll a Migrate agent.
+
+        ``POST /cloud-connections/{connection_id}/agent-enrollments``
+
+        Not replayed by the API, so it is sent once and not retried after an error.
+        """
+        return cast(
+            "CloudAgentEnrollment",
+            self._client.request(
+                "POST",
+                f"/cloud-connections/{path_param(connection_id)}/agent-enrollments",
+                query=merge_params({}, extra_query),
+                idempotency_key=idempotency_key,
+                no_replay=True,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def revoke_agent(
+        self,
+        connection_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> CloudConnection:
+        """Revoke a connection's agent.
+
+        ``DELETE /cloud-connections/{connection_id}/agent``
+        """
+        return cast(
+            "CloudConnection",
+            self._client.request(
+                "DELETE",
+                f"/cloud-connections/{path_param(connection_id)}/agent",
+                query=merge_params({}, extra_query),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
 
 class MigrateScansResource(CloudScanWaiter):
-    """Reads of everything a connection's role can see."""
+    """Reads of everything a connection can see."""
 
     def list(
         self,
@@ -6743,6 +6828,7 @@ class MigrateMigrationsResource(SyncResource):
         cidr: Union[str, NotGiven] = NOT_GIVEN,
         role: Union[Literal["member", "admin"], NotGiven] = NOT_GIVEN,
         email: Union[str, NotGiven] = NOT_GIVEN,
+        allow_version_downgrade: Union[bool, NotGiven] = NOT_GIVEN,
         idempotency_key: Optional[str] = None,
         extra_headers: Optional[Headers] = None,
         extra_query: Optional[Query] = None,
@@ -6752,6 +6838,10 @@ class MigrateMigrationsResource(SyncResource):
         """Edit a plan item.
 
         ``PATCH /migrations/{migration_id}/items``
+
+        Args:
+          allow_version_downgrade: On a kubernetes_cluster item: consent to a lower
+              Kubernetes version than the source runs.
         """
         return cast(
             "Migration",
@@ -6768,6 +6858,7 @@ class MigrateMigrationsResource(SyncResource):
                         "cidr": cidr,
                         "role": role,
                         "email": email,
+                        "allow_version_downgrade": allow_version_downgrade,
                     },
                     extra_body,
                 ),
@@ -6800,19 +6891,1082 @@ class MigrateMigrationsResource(SyncResource):
             ),
         )
 
+    def send_invites(
+        self,
+        migration_id: str,
+        *,
+        keys: List[str],
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> MigrationInvites:
+        """Invite a plan's people.
+
+        ``POST /migrations/{migration_id}/invites``
+
+        Args:
+          keys: The `user` items to invite, by key: 1 to 50.
+        """
+        return cast(
+            "MigrationInvites",
+            self._client.request(
+                "POST",
+                f"/migrations/{path_param(migration_id)}/invites",
+                query=merge_params({}, extra_query),
+                body=merge_params({"keys": keys}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+
+class MigrateProvidersResource(SyncResource):
+    """The clouds Migrate can connect, and how it reads each (federated or the Migrate agent)."""
+
+    def list(
+        self,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> CloudProviderList:
+        """List the clouds Migrate can read.
+
+        ``GET /cloud-providers``
+        """
+        return cast(
+            "CloudProviderList",
+            self._client.request(
+                "GET",
+                "/cloud-providers",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list_all(
+        self,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Iterator[CloudProvider]:
+        """List the clouds Migrate can read, following ``next_cursor`` through every page.
+
+        ``GET /cloud-providers``
+        """
+        return self._client._paginate(
+            "/cloud-providers", query=merge_params({}, extra_query), extra_headers=extra_headers, timeout=timeout
+        )
+
+
+class MigrateCopyAccessResource(SyncResource):
+    """A connection's opt-in copy access: the buckets Pantech may copy, through a separate role."""
+
+    def get(
+        self,
+        connection_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> CopyAccess:
+        """Get copy access.
+
+        ``GET /cloud-connections/{connection_id}/copy-access``
+        """
+        return cast(
+            "CopyAccess",
+            self._client.request(
+                "GET",
+                f"/cloud-connections/{path_param(connection_id)}/copy-access",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def set(
+        self,
+        connection_id: str,
+        *,
+        buckets: Union[List[str], NotGiven] = NOT_GIVEN,
+        role_arn: Union[str, NotGiven] = NOT_GIVEN,
+        retry: Union[bool, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> CopyAccess:
+        """Set copy access.
+
+        ``PUT /cloud-connections/{connection_id}/copy-access``
+
+        Args:
+          buckets: The source buckets Pantech may copy, 1 to 50, each once.
+          role_arn: The copy stack's `CopyRoleArn` output.
+          retry: Verify the role again.
+        """
+        return cast(
+            "CopyAccess",
+            self._client.request(
+                "PUT",
+                f"/cloud-connections/{path_param(connection_id)}/copy-access",
+                query=merge_params({}, extra_query),
+                body=merge_params({"buckets": buckets, "role_arn": role_arn, "retry": retry}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+
+class MigrateBucketImportsResource(SyncResource):
+    """Copies of a source bucket's objects into a Pantech bucket."""
+
+    def list(
+        self,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> BucketImportList:
+        """List bucket imports.
+
+        ``GET /bucket-imports``
+        """
+        return cast(
+            "BucketImportList",
+            self._client.request(
+                "GET",
+                "/bucket-imports",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list_all(
+        self,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Iterator[BucketImport]:
+        """List bucket imports, following ``next_cursor`` through every page.
+
+        ``GET /bucket-imports``
+        """
+        return self._client._paginate(
+            "/bucket-imports", query=merge_params({}, extra_query), extra_headers=extra_headers, timeout=timeout
+        )
+
+    def start(
+        self,
+        *,
+        connection_id: str,
+        source_bucket: str,
+        destination_bucket_name: Union[str, NotGiven] = NOT_GIVEN,
+        destination_bucket_id: Union[str, NotGiven] = NOT_GIVEN,
+        versioning: Union[bool, NotGiven] = NOT_GIVEN,
+        public_read: Union[bool, NotGiven] = NOT_GIVEN,
+        migration_id: Union[str, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> BucketImport:
+        """Copy a bucket into Pantech.
+
+        ``POST /bucket-imports``
+
+        Args:
+          source_bucket: The source bucket's name.
+          destination_bucket_name: A new Pantech bucket to make and copy into.
+          destination_bucket_id: An existing Pantech bucket of the organization to copy
+              into.
+          versioning: Versioning on a new bucket.
+          public_read: Make a new bucket publicly readable.
+          migration_id: The plan the move belongs to; its size for the bucket is checked
+              against the storage left.
+        """
+        return cast(
+            "BucketImport",
+            self._client.request(
+                "POST",
+                "/bucket-imports",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {
+                        "connection_id": connection_id,
+                        "source_bucket": source_bucket,
+                        "destination_bucket_name": destination_bucket_name,
+                        "destination_bucket_id": destination_bucket_id,
+                        "versioning": versioning,
+                        "public_read": public_read,
+                        "migration_id": migration_id,
+                    },
+                    extra_body,
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def get(
+        self,
+        import_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> BucketImport:
+        """Get a bucket import.
+
+        ``GET /bucket-imports/{import_id}``
+        """
+        return cast(
+            "BucketImport",
+            self._client.request(
+                "GET",
+                f"/bucket-imports/{path_param(import_id)}",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def cancel(
+        self,
+        import_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> BucketImport:
+        """Cancel a bucket import.
+
+        ``POST /bucket-imports/{import_id}/cancel``
+        """
+        return cast(
+            "BucketImport",
+            self._client.request(
+                "POST",
+                f"/bucket-imports/{path_param(import_id)}/cancel",
+                query=merge_params({}, extra_query),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def resync(
+        self,
+        import_id: str,
+        *,
+        mirror_deletes: Union[bool, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> BucketImport:
+        """Resync a bucket import.
+
+        ``POST /bucket-imports/{import_id}/resync``
+
+        Args:
+          mirror_deletes: Off unless set. After this pass has listed the whole source,
+              delete the objects this import copied that the source no longer has, and only
+              those still holding the bytes the import wrote.
+        """
+        return cast(
+            "BucketImport",
+            self._client.request(
+                "POST",
+                f"/bucket-imports/{path_param(import_id)}/resync",
+                query=merge_params({}, extra_query),
+                body=merge_params({"mirror_deletes": mirror_deletes}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+
+class MigrateServerCopiesResource(SyncResource):
+    """Copies of a planned server's disks into a new Pantech instance."""
+
+    def start(
+        self,
+        migration_id: str,
+        *,
+        item_key: str,
+        source: Union[Literal["agent", "aws_snapshot"], NotGiven] = NOT_GIVEN,
+        name: Union[str, NotGiven] = NOT_GIVEN,
+        plan_slug: Union[str, NotGiven] = NOT_GIVEN,
+        subnet_id: Union[str, NotGiven] = NOT_GIVEN,
+        security_group_id: Union[str, NotGiven] = NOT_GIVEN,
+        ssh_key_id: Union[str, NotGiven] = NOT_GIVEN,
+        aws: Union[ServerCopyAWSSource, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> ServerCopy:
+        """Copy a server.
+
+        ``POST /migrations/{migration_id}/server-copies``
+
+        Args:
+          item_key: The planned server's item key.
+          name: The new instance's name; the source's when empty.
+          plan_slug: Overrides the item's plan.
+          ssh_key_id: Optional. The copied disk keeps its own users and keys.
+        """
+        return cast(
+            "ServerCopy",
+            self._client.request(
+                "POST",
+                f"/migrations/{path_param(migration_id)}/server-copies",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {
+                        "item_key": item_key,
+                        "source": source,
+                        "name": name,
+                        "plan_slug": plan_slug,
+                        "subnet_id": subnet_id,
+                        "security_group_id": security_group_id,
+                        "ssh_key_id": ssh_key_id,
+                        "aws": aws,
+                    },
+                    extra_body,
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def get_template(
+        self,
+        migration_id: str,
+        *,
+        item_key: str,
+        create_snapshots: Union[bool, NotGiven] = NOT_GIVEN,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> ServerCopyTemplate:
+        """Get the AWS copy role template.
+
+        ``GET /migrations/{migration_id}/server-copy-template``
+        """
+        return cast(
+            "ServerCopyTemplate",
+            self._client.request(
+                "GET",
+                f"/migrations/{path_param(migration_id)}/server-copy-template",
+                query=merge_params({"item_key": item_key, "create_snapshots": create_snapshots}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list(
+        self,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> ServerCopyList:
+        """List server copies.
+
+        ``GET /server-copies``
+        """
+        return cast(
+            "ServerCopyList",
+            self._client.request(
+                "GET",
+                "/server-copies",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list_all(
+        self,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Iterator[ServerCopy]:
+        """List server copies, following ``next_cursor`` through every page.
+
+        ``GET /server-copies``
+        """
+        return self._client._paginate(
+            "/server-copies", query=merge_params({}, extra_query), extra_headers=extra_headers, timeout=timeout
+        )
+
+    def get(
+        self,
+        copy_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> ServerCopy:
+        """Get a server copy.
+
+        ``GET /server-copies/{copy_id}``
+        """
+        return cast(
+            "ServerCopy",
+            self._client.request(
+                "GET",
+                f"/server-copies/{path_param(copy_id)}",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def sync(
+        self,
+        copy_id: str,
+        *,
+        snapshots: Union[Dict[str, str], NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> ServerCopy:
+        """Copy what changed.
+
+        ``POST /server-copies/{copy_id}/sync``
+
+        Args:
+          snapshots: The next pass's snapshot for each volume id, for an AWS copy that makes
+              none itself.
+        """
+        return cast(
+            "ServerCopy",
+            self._client.request(
+                "POST",
+                f"/server-copies/{path_param(copy_id)}/sync",
+                query=merge_params({}, extra_query),
+                body=merge_params({"snapshots": snapshots}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def cut_over(
+        self,
+        copy_id: str,
+        *,
+        snapshots: Union[Dict[str, str], NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> ServerCopy:
+        """Cut over.
+
+        ``POST /server-copies/{copy_id}/cutover``
+
+        Args:
+          snapshots: The next pass's snapshot for each volume id, for an AWS copy that makes
+              none itself.
+        """
+        return cast(
+            "ServerCopy",
+            self._client.request(
+                "POST",
+                f"/server-copies/{path_param(copy_id)}/cutover",
+                query=merge_params({}, extra_query),
+                body=merge_params({"snapshots": snapshots}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def cancel(
+        self,
+        copy_id: str,
+        *,
+        snapshots: Union[Dict[str, str], NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> ServerCopy:
+        """Cancel a server copy.
+
+        ``POST /server-copies/{copy_id}/cancel``
+
+        Args:
+          snapshots: The next pass's snapshot for each volume id, for an AWS copy that makes
+              none itself.
+        """
+        return cast(
+            "ServerCopy",
+            self._client.request(
+                "POST",
+                f"/server-copies/{path_param(copy_id)}/cancel",
+                query=merge_params({}, extra_query),
+                body=merge_params({"snapshots": snapshots}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+
+class MigrateDatabaseImportsResource(SyncResource):
+    """Moves of a planned database into one of your Pantech databases, through the agent."""
+
+    def start(
+        self,
+        migration_id: str,
+        *,
+        item_key: str,
+        destination_database_id: str,
+        source_ref: str,
+        target_database: Union[str, NotGiven] = NOT_GIVEN,
+        mode: Union[Literal["dump", "replicate"], NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DatabaseImport:
+        """Import a database from a plan.
+
+        ``POST /migrations/{migration_id}/database-imports``
+
+        Args:
+          item_key: The plan item's key: one of the migration's `database` items.
+          destination_database_id: One of your Pantech databases with the same engine as the
+              source.
+          target_database: The database to create and fill on the destination; it must be
+              empty.
+          mode: `dump` copies once (stop writes to the source first).
+          source_ref: The source's name in your Migrate agent's configuration, 1 to 64 of
+              letters, digits, `.`, `_` and `-`.
+        """
+        return cast(
+            "DatabaseImport",
+            self._client.request(
+                "POST",
+                f"/migrations/{path_param(migration_id)}/database-imports",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {
+                        "item_key": item_key,
+                        "destination_database_id": destination_database_id,
+                        "target_database": target_database,
+                        "mode": mode,
+                        "source_ref": source_ref,
+                    },
+                    extra_body,
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list(
+        self,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DatabaseImportList:
+        """List database imports.
+
+        ``GET /database-imports``
+        """
+        return cast(
+            "DatabaseImportList",
+            self._client.request(
+                "GET",
+                "/database-imports",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list_all(
+        self,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Iterator[DatabaseImport]:
+        """List database imports, following ``next_cursor`` through every page.
+
+        ``GET /database-imports``
+        """
+        return self._client._paginate(
+            "/database-imports", query=merge_params({}, extra_query), extra_headers=extra_headers, timeout=timeout
+        )
+
+    def get(
+        self,
+        import_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DatabaseImport:
+        """Get a database import.
+
+        ``GET /database-imports/{import_id}``
+        """
+        return cast(
+            "DatabaseImport",
+            self._client.request(
+                "GET",
+                f"/database-imports/{path_param(import_id)}",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def check_readiness(
+        self,
+        import_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DatabaseImport:
+        """Check readiness again.
+
+        ``POST /database-imports/{import_id}/readiness``
+        """
+        return cast(
+            "DatabaseImport",
+            self._client.request(
+                "POST",
+                f"/database-imports/{path_param(import_id)}/readiness",
+                query=merge_params({}, extra_query),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def cut_over(
+        self,
+        import_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DatabaseImport:
+        """Cut over or finish an import.
+
+        ``POST /database-imports/{import_id}/cutover``
+        """
+        return cast(
+            "DatabaseImport",
+            self._client.request(
+                "POST",
+                f"/database-imports/{path_param(import_id)}/cutover",
+                query=merge_params({}, extra_query),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def cancel(
+        self,
+        import_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DatabaseImport:
+        """Cancel an import.
+
+        ``POST /database-imports/{import_id}/cancel``
+        """
+        return cast(
+            "DatabaseImport",
+            self._client.request(
+                "POST",
+                f"/database-imports/{path_param(import_id)}/cancel",
+                query=merge_params({}, extra_query),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def revoke_access(
+        self,
+        import_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> DatabaseImport:
+        """Remove an import's access.
+
+        ``POST /database-imports/{import_id}/revoke-access``
+        """
+        return cast(
+            "DatabaseImport",
+            self._client.request(
+                "POST",
+                f"/database-imports/{path_param(import_id)}/revoke-access",
+                query=merge_params({}, extra_query),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+
+class MigrateKubernetesMovesResource(SyncResource):
+    """Moves of a planned Kubernetes cluster into one of your Pantech clusters."""
+
+    def start(
+        self,
+        migration_id: str,
+        *,
+        item_key: str,
+        cluster_id: str,
+        include_secrets: Union[bool, NotGiven] = NOT_GIVEN,
+        copy_volumes: Union[bool, NotGiven] = NOT_GIVEN,
+        publish_load_balancers: Union[bool, NotGiven] = NOT_GIVEN,
+        namespaces: Union[List[str], NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> KubernetesMove:
+        """Start a Kubernetes move.
+
+        ``POST /migrations/{migration_id}/kubernetes-moves``
+
+        Args:
+          item_key: A `kubernetes_cluster` item of the plan.
+          cluster_id: A running Pantech cluster of your organization.
+        """
+        return cast(
+            "KubernetesMove",
+            self._client.request(
+                "POST",
+                f"/migrations/{path_param(migration_id)}/kubernetes-moves",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {
+                        "item_key": item_key,
+                        "cluster_id": cluster_id,
+                        "include_secrets": include_secrets,
+                        "copy_volumes": copy_volumes,
+                        "publish_load_balancers": publish_load_balancers,
+                        "namespaces": namespaces,
+                    },
+                    extra_body,
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list(
+        self,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> KubernetesMoveList:
+        """List Kubernetes moves.
+
+        ``GET /kubernetes-moves``
+        """
+        return cast(
+            "KubernetesMoveList",
+            self._client.request(
+                "GET",
+                "/kubernetes-moves",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list_all(
+        self,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Iterator[KubernetesMove]:
+        """List Kubernetes moves, following ``next_cursor`` through every page.
+
+        ``GET /kubernetes-moves``
+        """
+        return self._client._paginate(
+            "/kubernetes-moves", query=merge_params({}, extra_query), extra_headers=extra_headers, timeout=timeout
+        )
+
+    def get_source_access(
+        self,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> KubernetesMoveSourceAccess:
+        """Source cluster access manifests.
+
+        ``GET /kubernetes-moves/source-access``
+        """
+        return cast(
+            "KubernetesMoveSourceAccess",
+            self._client.request(
+                "GET",
+                "/kubernetes-moves/source-access",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def get(
+        self,
+        move_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> KubernetesMoveDetail:
+        """Get a Kubernetes move.
+
+        ``GET /kubernetes-moves/{move_id}``
+        """
+        return cast(
+            "KubernetesMoveDetail",
+            self._client.request(
+                "GET",
+                f"/kubernetes-moves/{path_param(move_id)}",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def preview(
+        self,
+        move_id: str,
+        *,
+        allow_privileged: Union[List[KubernetesMoveRef], NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> KubernetesMove:
+        """Preview a Kubernetes move.
+
+        ``POST /kubernetes-moves/{move_id}/preview``
+        """
+        return cast(
+            "KubernetesMove",
+            self._client.request(
+                "POST",
+                f"/kubernetes-moves/{path_param(move_id)}/preview",
+                query=merge_params({}, extra_query),
+                body=merge_params({"allow_privileged": allow_privileged}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def apply(
+        self,
+        move_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> KubernetesMove:
+        """Apply a Kubernetes move.
+
+        ``POST /kubernetes-moves/{move_id}/apply``
+        """
+        return cast(
+            "KubernetesMove",
+            self._client.request(
+                "POST",
+                f"/kubernetes-moves/{path_param(move_id)}/apply",
+                query=merge_params({}, extra_query),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def sync_volumes(
+        self,
+        move_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> KubernetesMove:
+        """Copy volumes again.
+
+        ``POST /kubernetes-moves/{move_id}/sync-volumes``
+        """
+        return cast(
+            "KubernetesMove",
+            self._client.request(
+                "POST",
+                f"/kubernetes-moves/{path_param(move_id)}/sync-volumes",
+                query=merge_params({}, extra_query),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def cut_over(
+        self,
+        move_id: str,
+        *,
+        source_writes_stopped: bool,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> KubernetesMove:
+        """Cut over a Kubernetes move.
+
+        ``POST /kubernetes-moves/{move_id}/cutover``
+        """
+        return cast(
+            "KubernetesMove",
+            self._client.request(
+                "POST",
+                f"/kubernetes-moves/{path_param(move_id)}/cutover",
+                query=merge_params({}, extra_query),
+                body=merge_params({"source_writes_stopped": source_writes_stopped}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def cancel(
+        self,
+        move_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> KubernetesMove:
+        """Cancel a Kubernetes move.
+
+        ``POST /kubernetes-moves/{move_id}/cancel``
+        """
+        return cast(
+            "KubernetesMove",
+            self._client.request(
+                "POST",
+                f"/kubernetes-moves/{path_param(move_id)}/cancel",
+                query=merge_params({}, extra_query),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def download_manifests(
+        self,
+        move_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> str:
+        """Download the moved manifests.
+
+        ``GET /kubernetes-moves/{move_id}/manifests``
+        """
+        return cast(
+            "str",
+            self._client.request(
+                "GET",
+                f"/kubernetes-moves/{path_param(move_id)}/manifests",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+                parse_as="yaml",
+            ),
+        )
+
 
 class MigrateResource(SyncResource):
-    """Move from another cloud: connect an account, scan it, and plan the move with prices and Terraform."""
+    """Move from another cloud: connect an account, scan it, plan the move with prices and Terraform, then copy its buckets, servers, databases and Kubernetes clusters."""
 
     connections: MigrateConnectionsResource
     scans: MigrateScansResource
     migrations: MigrateMigrationsResource
+    providers: MigrateProvidersResource
+    copy_access: MigrateCopyAccessResource
+    bucket_imports: MigrateBucketImportsResource
+    server_copies: MigrateServerCopiesResource
+    database_imports: MigrateDatabaseImportsResource
+    kubernetes_moves: MigrateKubernetesMovesResource
 
     def __init__(self, client: SyncAPIClient) -> None:
         super().__init__(client)
         self.connections = MigrateConnectionsResource(client)
         self.scans = MigrateScansResource(client)
         self.migrations = MigrateMigrationsResource(client)
+        self.providers = MigrateProvidersResource(client)
+        self.copy_access = MigrateCopyAccessResource(client)
+        self.bucket_imports = MigrateBucketImportsResource(client)
+        self.server_copies = MigrateServerCopiesResource(client)
+        self.database_imports = MigrateDatabaseImportsResource(client)
+        self.kubernetes_moves = MigrateKubernetesMovesResource(client)
 
 
 class CertificatesResource(CertificateWaiter):

@@ -327,9 +327,10 @@ class CloudConnectionWaiter(SyncResource):
     ) -> CloudConnection:
         """Polls ``GET /cloud-connections/{id}`` until the connection is ``connected``.
 
-        Set the role ARN with ``update`` first: a connection awaiting it is
-        waited on too. Raises ``CloudFailedError`` when the check fails, and
-        ``WaitTimeoutError`` after *timeout* seconds (``None`` waits forever).
+        Set the role ARN or the federation details with ``update``, or enroll
+        the agent, first: a connection awaiting them is waited on too. Raises
+        ``CloudFailedError`` when the check fails, and ``WaitTimeoutError``
+        after *timeout* seconds (``None`` waits forever).
         """
         path = f"/cloud-connections/{path_param(connection_id)}"
         conn = _wait_cloud_sync(self, "connection", path, connection_id, CONNECTION_DONE, timeout, poll_interval)
@@ -342,9 +343,10 @@ class AsyncCloudConnectionWaiter(AsyncResource):
     ) -> CloudConnection:
         """Polls ``GET /cloud-connections/{id}`` until the connection is ``connected``.
 
-        Set the role ARN with ``update`` first: a connection awaiting it is
-        waited on too. Raises ``CloudFailedError`` when the check fails, and
-        ``WaitTimeoutError`` after *timeout* seconds (``None`` waits forever).
+        Set the role ARN or the federation details with ``update``, or enroll
+        the agent, first: a connection awaiting them is waited on too. Raises
+        ``CloudFailedError`` when the check fails, and ``WaitTimeoutError``
+        after *timeout* seconds (``None`` waits forever).
         """
         path = f"/cloud-connections/{path_param(connection_id)}"
         conn = await _wait_cloud_async(self, "connection", path, connection_id, CONNECTION_DONE, timeout, poll_interval)

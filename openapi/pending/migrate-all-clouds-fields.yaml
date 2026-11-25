@@ -1,0 +1,983 @@
+# Widens the Migrate schemas the vendored spec already has (connections, scans,
+# inventories and plan items) with the fields the endpoints in
+# migrate-all-clouds.yaml use: other providers, the Migrate agent, people,
+# buckets, Kubernetes clusters and Windows. Applies until openapi/public-api.yaml
+# includes them; delete once the published spec has them.
+x-pending-replace-until: "#/components/schemas/MigrationItemTarget/properties/kubernetes"
+components:
+  schemas:
+    CloudFailure:
+      type:
+        - object
+        - "null"
+      description: Why the last check or scan failed; null when it didn't.
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          enum:
+            - assume_role_denied
+            - permission_missing
+            - provider_unavailable
+            - scan_too_large
+            - internal
+            - agent_offline
+            - token_rejected
+            - invalid_upload
+        message:
+          type: string
+          description: What to do about it.
+    CloudConnectionSetup:
+      type: object
+      description: What you run in your own cloud to connect it. Every setup grants read-only access, listed one permission at a time in `permissions`; none creates a key Pantech holds.
+      required:
+        - access
+        - issuer_url
+        - audience
+        - subject
+        - quick_create_url
+        - template
+        - template_format
+        - files
+        - permissions
+        - agent
+      properties:
+        access:
+          type: string
+          description: "`federated`: Pantech reads your cloud with 5-minute tokens it signs for this connection only (AWS, Google Cloud, Azure, Huawei Cloud). `agent`: you run the Pantech Migrate agent, which keeps your read-only token on your machine."
+          enum:
+            - federated
+            - agent
+        issuer_url:
+          type:
+            - string
+            - "null"
+          description: Pantech's identity provider URL, which your cloud trusts; null for agent providers.
+        audience:
+          type:
+            - string
+            - "null"
+          description: The audience every token carries; null for agent providers.
+        subject:
+          type: string
+          description: "The subject your trust policy requires: this connection's id."
+        quick_create_url:
+          type:
+            - string
+            - "null"
+          description: Opens AWS's create-stack page with this template and connection filled in; null when not offered.
+        template:
+          type: string
+          description: "The main setup file: AWS's CloudFormation template (JSON), Google Cloud's gcloud script, Azure's Azure CLI script, Huawei Cloud's steps, or, for agent providers, how to make a read-only token."
+        template_format:
+          type: string
+          enum:
+            - cloudformation
+            - shell
+            - markdown
+            - agent
+        files:
+          type: array
+          description: Further setup files, such as a Terraform version of the setup or JSON documents to paste.
+          items:
+            type: object
+            required:
+              - name
+              - content
+            properties:
+              name:
+                type: string
+              content:
+                type: string
+        permissions:
+          type: array
+          description: Every read-only permission the setup grants.
+          items:
+            type: string
+        agent:
+          $ref: "#/components/schemas/CloudAgentSetup"
+    CloudConnection:
+      type: object
+      required:
+        - id
+        - provider
+        - name
+        - status
+        - failure
+        - role_arn
+        - aws_account_id
+        - external_account_id
+        - gcp
+        - azure
+        - huawei
+        - agent
+        - verified_at
+        - created_at
+        - updated_at
+        - setup
+      properties:
+        id:
+          type: string
+          examples:
+            - ccn_06gk3x9tq7m2v8r4y1c5d0zp8w
+        provider:
+          type: string
+          enum:
+            - aws
+            - gcp
+            - azure
+            - huawei
+            - digitalocean
+            - hetzner
+            - linode
+            - vultr
+            - contabo
+            - openstack
+        name:
+          type: string
+        status:
+          type: string
+          description: "`awaiting_role` (federated providers: waiting for what the setup printed), `awaiting_agent` (agent providers: no agent enrolled), `verifying`, `connected` or `failed`."
+          enum:
+            - awaiting_role
+            - awaiting_agent
+            - verifying
+            - connected
+            - failed
+        failure:
+          $ref: "#/components/schemas/CloudFailure"
+        role_arn:
+          type:
+            - string
+            - "null"
+        aws_account_id:
+          type:
+            - string
+            - "null"
+          description: Set for AWS connections only; see external_account_id.
+        external_account_id:
+          type:
+            - string
+            - "null"
+          description: "The source account: an AWS account, a Google Cloud pool's project number, an Azure tenant, or what the agent reported."
+        gcp:
+          $ref: "#/components/schemas/CloudGCPFederation"
+        azure:
+          $ref: "#/components/schemas/CloudAzureFederation"
+        huawei:
+          $ref: "#/components/schemas/CloudHuaweiFederation"
+        agent:
+          $ref: "#/components/schemas/CloudAgentStatus"
+        verified_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        setup:
+          $ref: "#/components/schemas/CloudConnectionSetup"
+    CreateCloudConnectionRequest:
+      type: object
+      required:
+        - name
+      properties:
+        provider:
+          type: string
+          description: "`aws`, the default, or another provider `GET /cloud-providers` lists."
+          enum:
+            - aws
+            - gcp
+            - azure
+            - huawei
+            - digitalocean
+            - hetzner
+            - linode
+            - vultr
+            - contabo
+            - openstack
+        name:
+          type: string
+          description: 1 to 100 characters, for example `Production AWS`.
+    UpdateCloudConnectionRequest:
+      type: object
+      required: []
+      properties:
+        name:
+          type: string
+        role_arn:
+          type: string
+          description: "AWS: the stack's RoleArn output."
+        gcp:
+          $ref: "#/components/schemas/CloudGCPFederation"
+        azure:
+          $ref: "#/components/schemas/CloudAzureFederation"
+        huawei:
+          $ref: "#/components/schemas/CloudHuaweiFederation"
+        retry:
+          type: boolean
+          description: Check the connection again.
+    CloudScan:
+      type: object
+      required:
+        - id
+        - connection_id
+        - runner
+        - status
+        - failure
+        - created_at
+        - started_at
+        - finished_at
+        - provider
+        - aws_account_id
+        - external_account_id
+        - regions
+        - counts
+        - cost
+        - warnings
+        - truncated
+        - inventory
+      properties:
+        id:
+          type: string
+          examples:
+            - csn_06gk3x9tq7m2v8r4y1c5d0zp8w
+        connection_id:
+          type: string
+        runner:
+          type: string
+          description: "`worker` (Pantech read your cloud) or `agent` (your agent did)."
+          enum:
+            - worker
+            - agent
+        status:
+          type: string
+          enum:
+            - queued
+            - running
+            - succeeded
+            - failed
+        failure:
+          $ref: "#/components/schemas/CloudFailure"
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        finished_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        provider:
+          type:
+            - string
+            - "null"
+        aws_account_id:
+          type:
+            - string
+            - "null"
+        external_account_id:
+          type:
+            - string
+            - "null"
+        regions:
+          type: array
+          items:
+            type: string
+          description: Regions read.
+        counts:
+          $ref: "#/components/schemas/CloudScanCounts"
+        cost:
+          $ref: "#/components/schemas/CloudCost"
+        warnings:
+          type: array
+          items:
+            type: string
+          description: Parts not read, e.g. `cost_unavailable` or `region_denied:eu-south-1`.
+        truncated:
+          type: array
+          items:
+            type: string
+          description: Kinds cut at 2,000 items.
+        inventory:
+          $ref: "#/components/schemas/CloudInventory"
+    CloudInventory:
+      type:
+        - object
+        - "null"
+      description: Everything a scan found.
+      required:
+        - instances
+        - volumes
+        - networks
+        - subnets
+        - security_groups
+        - public_ips
+        - load_balancers
+        - databases
+        - buckets
+        - users
+        - ssh_keys
+        - kubernetes_clusters
+      properties:
+        instances:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - name
+              - region
+              - zone
+              - instance_type
+              - state
+              - vcpu
+              - memory_mib
+              - architecture
+              - platform
+              - os_name
+              - volume_ids
+              - network_id
+              - subnet_id
+              - security_group_ids
+              - public_ip
+              - private_ip
+              - key_name
+              - launched_at
+            properties:
+              id:
+                type: string
+              name:
+                type:
+                  - string
+                  - "null"
+              region:
+                type: string
+              zone:
+                type:
+                  - string
+                  - "null"
+              instance_type:
+                type: string
+              state:
+                type: string
+              vcpu:
+                type:
+                  - integer
+                  - "null"
+              memory_mib:
+                type:
+                  - integer
+                  - "null"
+              architecture:
+                type: string
+              platform:
+                type: string
+              os_name:
+                type:
+                  - string
+                  - "null"
+              volume_ids:
+                type: array
+                items:
+                  type: string
+              network_id:
+                type:
+                  - string
+                  - "null"
+              subnet_id:
+                type:
+                  - string
+                  - "null"
+              security_group_ids:
+                type: array
+                items:
+                  type: string
+              public_ip:
+                type:
+                  - string
+                  - "null"
+              private_ip:
+                type:
+                  - string
+                  - "null"
+              key_name:
+                type:
+                  - string
+                  - "null"
+              launched_at:
+                type:
+                  - string
+                  - "null"
+                format: date-time
+        volumes:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - region
+              - zone
+              - type
+              - size_gb
+              - attached_to
+              - device
+              - encrypted
+            properties:
+              id:
+                type: string
+              region:
+                type: string
+              zone:
+                type:
+                  - string
+                  - "null"
+              type:
+                type: string
+              size_gb:
+                type: integer
+              attached_to:
+                type:
+                  - string
+                  - "null"
+              device:
+                type:
+                  - string
+                  - "null"
+              encrypted:
+                type: boolean
+        networks:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - region
+              - name
+              - cidr
+              - is_default
+            properties:
+              id:
+                type: string
+              region:
+                type: string
+              name:
+                type:
+                  - string
+                  - "null"
+              cidr:
+                type: string
+              is_default:
+                type: boolean
+        subnets:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - region
+              - network_id
+              - name
+              - cidr
+              - zone
+              - maps_public_ip
+            properties:
+              id:
+                type: string
+              region:
+                type: string
+              network_id:
+                type: string
+              name:
+                type:
+                  - string
+                  - "null"
+              cidr:
+                type: string
+              zone:
+                type:
+                  - string
+                  - "null"
+              maps_public_ip:
+                type: boolean
+        security_groups:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - region
+              - network_id
+              - name
+              - description
+              - rules
+            properties:
+              id:
+                type: string
+              region:
+                type: string
+              network_id:
+                type:
+                  - string
+                  - "null"
+              name:
+                type: string
+              description:
+                type:
+                  - string
+                  - "null"
+              rules:
+                type: array
+                items:
+                  type: object
+                  required:
+                    - direction
+                    - protocol
+                    - from_port
+                    - to_port
+                    - cidr
+                    - ipv6_cidr
+                    - source_group_id
+                    - prefix_list_id
+                  properties:
+                    direction:
+                      type: string
+                      enum:
+                        - ingress
+                        - egress
+                    protocol:
+                      type: string
+                    from_port:
+                      type:
+                        - integer
+                        - "null"
+                    to_port:
+                      type:
+                        - integer
+                        - "null"
+                    cidr:
+                      type:
+                        - string
+                        - "null"
+                    ipv6_cidr:
+                      type:
+                        - string
+                        - "null"
+                    source_group_id:
+                      type:
+                        - string
+                        - "null"
+                    prefix_list_id:
+                      type:
+                        - string
+                        - "null"
+        public_ips:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - region
+              - address
+              - instance_id
+            properties:
+              id:
+                type: string
+              region:
+                type: string
+              address:
+                type: string
+              instance_id:
+                type:
+                  - string
+                  - "null"
+        load_balancers:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - region
+              - name
+              - type
+              - scheme
+              - network_id
+              - listeners
+            properties:
+              id:
+                type: string
+              region:
+                type: string
+              name:
+                type: string
+              type:
+                type: string
+              scheme:
+                type: string
+              network_id:
+                type:
+                  - string
+                  - "null"
+              listeners:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MigrationListener"
+        databases:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - region
+              - engine
+              - engine_version
+              - instance_class
+              - vcpu
+              - memory_mib
+              - storage_gb
+              - multi_az
+              - publicly_accessible
+            properties:
+              id:
+                type: string
+              region:
+                type: string
+              engine:
+                type: string
+              engine_version:
+                type: string
+              instance_class:
+                type: string
+              vcpu:
+                type:
+                  - integer
+                  - "null"
+              memory_mib:
+                type:
+                  - integer
+                  - "null"
+              storage_gb:
+                type: integer
+              multi_az:
+                type: boolean
+              publicly_accessible:
+                type: boolean
+        buckets:
+          type: array
+          items:
+            type: object
+            required:
+              - name
+              - region
+              - created_at
+            properties:
+              name:
+                type: string
+              region:
+                type:
+                  - string
+                  - "null"
+              created_at:
+                type:
+                  - string
+                  - "null"
+                format: date-time
+        users:
+          type: array
+          items:
+            type: object
+            required:
+              - id
+              - name
+              - email
+              - is_admin
+              - source
+              - access_level
+              - roles
+              - created_at
+            properties:
+              id:
+                type:
+                  - string
+                  - "null"
+              name:
+                type: string
+              email:
+                type:
+                  - string
+                  - "null"
+              is_admin:
+                type: boolean
+              source:
+                type:
+                  - string
+                  - "null"
+                description: "Where the person came from: `iam_user`, `identity_center`, `gcp_iam`, `entra`, `team`."
+              access_level:
+                type:
+                  - string
+                  - "null"
+                enum:
+                  - admin
+                  - write
+                  - read
+                  - null
+              roles:
+                type: array
+                description: The source cloud's own role names.
+                items:
+                  type: string
+              created_at:
+                type:
+                  - string
+                  - "null"
+                format: date-time
+        ssh_keys:
+          type: array
+          items:
+            type: object
+            required:
+              - name
+              - region
+              - fingerprint
+              - public_key
+            properties:
+              name:
+                type: string
+              region:
+                type: string
+              fingerprint:
+                type:
+                  - string
+                  - "null"
+              public_key:
+                type:
+                  - string
+                  - "null"
+        kubernetes_clusters:
+          type: array
+          items:
+            $ref: "#/components/schemas/CloudKubernetesCluster"
+    MigrationItemTarget:
+      type: object
+      description: What the item becomes on Pantech; fields that don't apply to its kind are null or empty.
+      required:
+        - plan_slug
+        - disk_gb
+        - cidr
+        - network_key
+        - subnet_key
+        - instance_key
+        - rules
+        - engine
+        - engine_version
+        - storage_gb
+        - role
+        - email
+        - public_key
+        - listeners
+        - image_slug
+        - invite_id
+        - invited_at
+        - bucket
+        - kubernetes
+      properties:
+        plan_slug:
+          type:
+            - string
+            - "null"
+        disk_gb:
+          type:
+            - integer
+            - "null"
+        cidr:
+          type:
+            - string
+            - "null"
+        network_key:
+          type:
+            - string
+            - "null"
+        subnet_key:
+          type:
+            - string
+            - "null"
+        instance_key:
+          type:
+            - string
+            - "null"
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/MigrationRule"
+        engine:
+          type:
+            - string
+            - "null"
+        engine_version:
+          type:
+            - string
+            - "null"
+        storage_gb:
+          type:
+            - integer
+            - "null"
+        role:
+          type:
+            - string
+            - "null"
+          enum:
+            - admin
+            - member
+            - null
+        email:
+          type:
+            - string
+            - "null"
+        public_key:
+          type:
+            - string
+            - "null"
+        listeners:
+          type: array
+          items:
+            $ref: "#/components/schemas/MigrationListener"
+        image_slug:
+          type:
+            - string
+            - "null"
+          description: The image a server is planned on when its operating system decides it (Windows Server).
+        invite_id:
+          type:
+            - string
+            - "null"
+          description: The Pantech invite sent to this person from this plan.
+        invited_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        bucket:
+          $ref: "#/components/schemas/MigrationBucketTarget"
+        kubernetes:
+          $ref: "#/components/schemas/MigrationKubernetesTarget"
+    CloudScanCounts:
+      type:
+        - object
+        - "null"
+      required:
+        - instances
+        - volumes
+        - networks
+        - subnets
+        - security_groups
+        - public_ips
+        - load_balancers
+        - databases
+        - buckets
+        - users
+        - ssh_keys
+        - kubernetes_clusters
+      properties:
+        instances:
+          type: integer
+        volumes:
+          type: integer
+        networks:
+          type: integer
+        subnets:
+          type: integer
+        security_groups:
+          type: integer
+        public_ips:
+          type: integer
+        load_balancers:
+          type: integer
+        databases:
+          type: integer
+        buckets:
+          type: integer
+        users:
+          type: integer
+        ssh_keys:
+          type: integer
+        kubernetes_clusters:
+          type: integer
+    MigrationItem:
+      type: object
+      required:
+        - key
+        - kind
+        - source
+        - status
+        - flags
+        - target
+      properties:
+        key:
+          type: string
+          description: "Stable across edits: kind, region and the source id."
+        kind:
+          type: string
+          enum:
+            - network
+            - subnet
+            - security_group
+            - instance
+            - volume
+            - public_ip
+            - load_balancer
+            - database
+            - ssh_key
+            - user
+            - bucket
+            - kubernetes_cluster
+        source:
+          $ref: "#/components/schemas/MigrationItemSource"
+        status:
+          type: string
+          enum:
+            - planned
+            - excluded
+            - unsupported
+        flags:
+          type: array
+          items:
+            $ref: "#/components/schemas/MigrationFlag"
+        target:
+          $ref: "#/components/schemas/MigrationItemTarget"
+    UpdateMigrationItemRequest:
+      type: object
+      required:
+        - key
+      properties:
+        key:
+          type: string
+        excluded:
+          type: boolean
+        plan_slug:
+          type: string
+        storage_gb:
+          type: integer
+          minimum: 1
+        cidr:
+          type: string
+        role:
+          type: string
+          enum:
+            - member
+            - admin
+        email:
+          type: string
+        allow_version_downgrade:
+          type: boolean
+          description: "On a kubernetes_cluster item: consent to a lower Kubernetes version than the source runs."

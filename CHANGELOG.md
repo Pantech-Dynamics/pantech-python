@@ -6,8 +6,18 @@ All notable changes to the `pantech` package. The newest version heading
 
 ## Unreleased
 
+## 0.6.0 (2026-11-25)
+
 FEATURES:
 
+- Pantech Migrate reads every cloud it supports, not only AWS: `migrate.providers.list()` lists them and how each is read (`federated` for AWS, Google Cloud, Azure and Huawei Cloud; `agent` for DigitalOcean, Hetzner, Linode, Vultr, Contabo and OpenStack). `migrate.connections.create` takes `provider`, `update` takes `gcp`, `azure` or `huawei` federation details, connections and scans report `external_account_id`, connections their `agent` and the provider's `setup`, and scans their `provider` and `runner`. Sync and async.
+- The Pantech Migrate agent: `migrate.connections.enroll_agent` (a one-time code, sent once and never retried, since each call issues a new one) and `migrate.connections.revoke_agent`.
+- People: a scan's `users` say where each person comes from (`source`), their `access_level` and their `roles`, and `migrate.migrations.send_invites` invites a plan's `user` items with their roles. Plan item targets carry `image_slug` (Windows Server, on request) and `invite_id`.
+- Buckets: `migrate.copy_access` (`get`, `set`) and `migrate.bucket_imports` (`list`, `list_all`, `start`, `get`, `cancel`, `resync` with optional `mirror_deletes`).
+- Servers: `migrate.server_copies` (`start`, `get_template` for the AWS copy role, `list`, `list_all`, `get`, `sync`, `cut_over`, `cancel`).
+- Databases: `migrate.database_imports` (`start`, `list`, `list_all`, `get`, `check_readiness`, `cut_over`, `cancel`, `revoke_access`).
+- Kubernetes: `migrate.kubernetes_moves` (`start`, `list`, `list_all`, `get_source_access`, `get`, `preview`, `apply`, `sync_volumes`, `cut_over`, `cancel`, and `download_manifests`, which returns the YAML as a `str`). Scans report `kubernetes_clusters`, plans have `kubernetes_cluster` items, and `migrate.migrations.update_item` takes `allow_version_downgrade`.
+- TypedDicts in `pantech.types` for every new schema, such as `CloudProvider`, `CloudAgentEnrollment`, `CopyAccess`, `BucketImport`, `ServerCopy`, `DatabaseImport`, `KubernetesMove` and `KubernetesMoveDetail`. A field named like a Python keyword (`pass` on `BucketImport` and `ServerCopy`) is read as `copy["pass"]`.
 - `databases.get_snapshot_schedule` and `databases.set_snapshot_schedule`: automatic snapshots of a database's data disk, as for instances and volumes. Sync and async.
 
 ## 0.5.0 (2026-11-24)

@@ -105,6 +105,7 @@ def test_timeouts_raise_api_timeout_error(make_client) -> None:  # type: ignore[
         lambda c: c.webhooks.delete("whk_1"),
         lambda c: c.webhooks.rotate_secret("whk_1"),
         lambda c: c.webhooks.deliveries.redeliver("whk_1", "dlv_1"),
+        lambda c: c.migrate.connections.enroll_agent("cc_1"),
     ],
 )
 def test_routes_that_do_not_replay_are_sent_once(make_client, call) -> None:  # type: ignore[no-untyped-def]
