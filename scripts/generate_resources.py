@@ -71,10 +71,22 @@ FAMILY_DOCS = {
     "ssh_keys": "Keys installed on new instances.",
     "webhooks": "Events sent to your own URL when something changes.",
     "webhooks.deliveries": "Deliveries of a webhook's events.",
-    "migrate": "Move from another cloud: connect an account, scan it, and plan the move with prices and Terraform.",
-    "migrate.connections": "Connections to AWS accounts through a read-only role; no access keys are shared.",
-    "migrate.scans": "Reads of everything a connection's role can see.",
+    "migrate": (
+        "Move from another cloud: connect an account, scan it, plan the move with prices and Terraform, "
+        "then copy its buckets, servers, databases and Kubernetes clusters."
+    ),
+    "migrate.providers": "The clouds Migrate can connect, and how it reads each (federated or the Migrate agent).",
+    "migrate.connections": (
+        "Read-only connections to other clouds: through short-lived tokens Pantech signs, or the Migrate agent; "
+        "no access keys are shared."
+    ),
+    "migrate.scans": "Reads of everything a connection can see.",
     "migrate.migrations": "Plans to move what a scan found to Pantech, with a price comparison and a Terraform export.",
+    "migrate.copy_access": "A connection's opt-in copy access: the buckets Pantech may copy, through a separate role.",
+    "migrate.bucket_imports": "Copies of a source bucket's objects into a Pantech bucket.",
+    "migrate.server_copies": "Copies of a planned server's disks into a new Pantech instance.",
+    "migrate.database_imports": "Moves of a planned database into one of your Pantech databases, through the agent.",
+    "migrate.kubernetes_moves": "Moves of a planned Kubernetes cluster into one of your Pantech clusters.",
     "iam": "Teams and access policies: who in your organization may do what, on which resources.",
     "iam.members": "The organization's members, with their teams and how many policies apply to each.",
     "certificates": "Certificate Manager: TLS certificates Pantech issues and renews, or ones you import.",
