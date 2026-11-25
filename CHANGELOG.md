@@ -6,6 +6,18 @@ All notable changes to the `pantech` package. The newest version heading
 
 ## Unreleased
 
+## 0.6.1 (2026-11-25)
+
+- The vendored spec is the one now published, and the `openapi/pending` files it covers are gone;
+  types and resources are regenerated from it. `client.migrate.connections.enroll_agent` and
+  `revoke_agent` work on every connection: AWS, Google Cloud, Azure and Huawei Cloud connections can
+  have an agent too, for server copies, database imports and Kubernetes moves (Pantech still scans
+  those clouds itself), and enrollment no longer answers `409 CLOUD_CONNECTION_NOT_AGENT`. Their
+  docstrings follow the published spec; revoking an agent also ends its server copy uploads.
+- Operations in the published spec the SDK does not wrap yet (functions, email, instance password
+  reset and the database CA certificate) are listed in `NOT_IN_SDK`; call them with
+  `client.request`.
+
 ## 0.6.0 (2026-11-25)
 
 FEATURES:

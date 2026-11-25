@@ -443,6 +443,314 @@ __all__ = [
 ]
 
 
+class _StartServerCopyRequestRequired(TypedDict):
+    # The planned server's item key.
+    item_key: str
+
+
+class StartServerCopyRequest(_StartServerCopyRequestRequired, total=False):
+    source: Literal["agent", "aws_snapshot"]
+    # The new instance's name; the source's when empty.
+    name: str
+    # Overrides the item's plan.
+    plan_slug: str
+    subnet_id: str
+    security_group_id: str
+    # Optional. The copied disk keeps its own users and keys.
+    ssh_key_id: str
+    aws: ServerCopyAWSSource
+
+
+class _ServerCopyAWSSourceRequired(TypedDict):
+    # The copy stack's CopyRoleArn output, never the discover role.
+    copy_role_arn: str
+
+
+class ServerCopyAWSSource(_ServerCopyAWSSourceRequired, total=False):
+    # The copy role may snapshot the server's volumes itself.
+    create_snapshots: bool
+    # The first pass's snapshot for each volume id, tagged pantech-migrate-connection.
+    snapshots: Dict[str, str]
+
+
+class ServerCopyActRequest(TypedDict, total=False):
+    # The next pass's snapshot for each volume id, for an AWS copy that makes none itself.
+    snapshots: Dict[str, str]
+
+
+class ServerCopyTemplate(TypedDict):
+    # CloudFormation JSON.
+    template: str
+    snapshot_tag: Dict[str, str]
+
+
+class ServerCopyList(TypedDict):
+    data: List[ServerCopy]
+    # Always null: this list is returned whole.
+    next_cursor: Optional[str]
+
+
+class ServerCopyFailure(TypedDict, total=False):
+    code: str
+    message: str
+
+
+class ServerCopyInstance(TypedDict, total=False):
+    name: str
+    plan_slug: str
+    region: str
+    subnet_id: Optional[str]
+    security_group_id: Optional[str]
+    ssh_key_id: Optional[str]
+    # Set once the instance is being created.
+    id: Optional[str]
+    order_id: Optional[str]
+
+
+class ServerCopyDisksItem(TypedDict, total=False):
+    index: int
+    role: Literal["root", "data"]
+    source: str
+    size_bytes: int
+    snapshot_id: Optional[str]
+    volume_id: Optional[str]
+
+
+class ServerCopyFlagsItem(TypedDict, total=False):
+    code: str
+    blocking: bool
+    message: str
+
+
+class ServerCopyPass(TypedDict, total=False):
+    number: int
+    kind: Literal["full", "delta", "final"]
+    started_at: Optional[str]
+
+
+class ServerCopyProgress(TypedDict, total=False):
+    chunks_total: int
+    chunks_done: int
+    bytes_total: int
+    bytes_uploaded: int
+    wire_bytes: int
+    eta_seconds: Optional[int]
+
+
+class _ServerCopyRequired(TypedDict):
+    # `sco_…`
+    id: str
+    migration_id: str
+    item_key: str
+    connection_id: str
+    source: Literal["agent", "aws_snapshot"]
+    status: Literal[
+        "waiting", "copying", "synced", "importing", "creating_instance", "completed", "failed", "cancelled"
+    ]
+    os_family: Literal["linux", "windows"]
+    instance: ServerCopyInstance
+    disks: List[ServerCopyDisksItem]
+    flags: List[ServerCopyFlagsItem]
+    progress: ServerCopyProgress
+    expires_at: str
+    created_at: str
+    updated_at: str
+
+
+_ServerCopyOptional = TypedDict(
+    "_ServerCopyOptional",
+    {
+        "failure": Optional[ServerCopyFailure],
+        "boot_mode": Optional[str],
+        "pass": Optional[ServerCopyPass],
+        "pending_pass": Optional[str],
+        "synced_at": Optional[str],
+        "completed_at": Optional[str],
+    },
+    total=False,
+)
+
+
+class ServerCopy(_ServerCopyRequired, _ServerCopyOptional):
+    pass
+
+
+class KubernetesMoveFailure(TypedDict):
+    """Why the move, or its last step, failed; null when nothing failed."""
+
+    code: str
+    message: str
+
+
+class KubernetesMoveFlag(TypedDict):
+    code: str
+    message: str
+
+
+class KubernetesMoveRef(TypedDict):
+    # API group; empty for the core API.
+    group: str
+    kind: str
+    namespace: str
+    name: str
+
+
+class KubernetesMoveOptions(TypedDict):
+    include_secrets: bool
+    copy_volumes: bool
+    publish_load_balancers: bool
+    namespaces: List[str]
+
+
+class KubernetesMoveSummary(TypedDict):
+    objects: int
+    refused: int
+    skipped: int
+    flagged: int
+    volumes: int
+    warnings: List[KubernetesMoveFlag]
+    addons: List[str]
+
+
+class KubernetesMove(TypedDict):
+    id: str
+    migration_id: str
+    item_key: str
+    connection_id: str
+    # The Pantech cluster the move applies to: always one of your organization's.
+    cluster_id: str
+    source_name: str
+    status: Literal[
+        "exporting",
+        "ready",
+        "previewing",
+        "applying",
+        "applied",
+        "syncing",
+        "cutting_over",
+        "completed",
+        "failed",
+        "cancelled",
+    ]
+    failure: KubernetesMoveFailure
+    options: KubernetesMoveOptions
+    summary: KubernetesMoveSummary
+    allow_privileged: List[KubernetesMoveRef]
+    previewed_at: Optional[str]
+    preview_ok: bool
+    applied_at: Optional[str]
+    completed_at: Optional[str]
+    sync_generation: int
+    created_at: str
+    updated_at: str
+
+
+class KubernetesMoveStep(TypedDict):
+    """The object's outcome in the last preview or apply; null when it has not run."""
+
+    result: Literal["created", "configured", "unchanged", "refused", "unverified"]
+    code: Optional[str]
+    message: Optional[str]
+
+
+class KubernetesMoveResource(TypedDict):
+    group: str
+    kind: str
+    namespace: str
+    name: str
+    api_version: str
+    # Apply order: definitions first, custom resources last.
+    tier: int
+    action: Literal["create", "refused", "skipped"]
+    flags: List[KubernetesMoveFlag]
+    # Refused for the cluster policy; name it in `allow_privileged` on preview to include it
+    # anyway.
+    policy_refused: bool
+    preview: KubernetesMoveStep
+    apply: KubernetesMoveStep
+
+
+class KubernetesMoveVolume(TypedDict):
+    id: str
+    namespace: str
+    claim: str
+    size_bytes: int
+    source_storage_class: str
+    target_storage_class: str
+    access_modes: List[str]
+    status: Literal["pending", "copying", "synced", "failed", "unsupported"]
+    flags: List[KubernetesMoveFlag]
+    generation: int
+    synced_generation: int
+    bytes_total: int
+    bytes_done: int
+    files_total: int
+    # The destination's own read-back matched the source's checksum.
+    checksum_verified: bool
+    synced_at: Optional[str]
+    failure: KubernetesMoveFailure
+
+
+class KubernetesMoveImage(TypedDict):
+    image: str
+    flags: List[KubernetesMoveFlag]
+
+
+class KubernetesMoveHold(TypedDict):
+    """A workload applied scaled down (or suspended) until the cutover, and what the cutover returns it to."""
+
+    group: str
+    kind: str
+    namespace: str
+    name: str
+    replicas: int
+    suspend: bool
+
+
+class KubernetesMoveDetail(KubernetesMove):
+    resources: List[KubernetesMoveResource]
+    volumes: List[KubernetesMoveVolume]
+    images: List[KubernetesMoveImage]
+    holds: List[KubernetesMoveHold]
+
+
+class KubernetesMoveSourceAccess(TypedDict):
+    # Read-only access (get, list, watch; no Secrets).
+    reader: str
+    # Adds reading Secrets.
+    secrets_reader: str
+    # Lets the agent start copy pods.
+    copier: str
+
+
+class _StartKubernetesMoveRequestRequired(TypedDict):
+    # A `kubernetes_cluster` item of the plan.
+    item_key: str
+    # A running Pantech cluster of your organization.
+    cluster_id: str
+
+
+class StartKubernetesMoveRequest(_StartKubernetesMoveRequestRequired, total=False):
+    include_secrets: bool
+    copy_volumes: bool
+    publish_load_balancers: bool
+    namespaces: List[str]
+
+
+class PreviewKubernetesMoveRequest(TypedDict, total=False):
+    allow_privileged: List[KubernetesMoveRef]
+
+
+class CutoverKubernetesMoveRequest(TypedDict):
+    source_writes_stopped: bool
+
+
+class KubernetesMoveList(TypedDict):
+    data: List[KubernetesMove]
+    # Always null: this list is returned whole.
+    next_cursor: Optional[str]
+
+
 class RegistryNamespace(TypedDict):
     """An organization's namespace on the private container registry."""
 
@@ -680,9 +988,9 @@ class _CreateInstanceRequestAddressRotationRequired(TypedDict):
 
 
 class CreateInstanceRequestAddressRotation(_CreateInstanceRequestAddressRotationRequired, total=False):
-    """Turns on dynamic IP once the instance runs: outbound traffic leaves from a dynamic IP that changes on the schedule, while inbound still reaches the instance's static address."""
+    """Turns on a dynamic IP once the instance runs: outbound traffic leaves from the dynamic IP, which changes on the schedule, while inbound traffic still reaches the instance's static IP."""
 
-    # `keep` lets open connections finish on the old address; `move` moves them at once.
+    # `keep` lets open connections finish on the old IP; `move` moves them at once.
     connections: Literal["keep", "move"]
 
 
@@ -694,8 +1002,6 @@ class _CreateInstanceRequestRequired(TypedDict):
     plan_slug: str
     # The operating system, from `GET /public/v1/images`.
     image_slug: str
-    # An SSH key from `GET /public/v1/ssh-keys`, installed for the default user.
-    ssh_key_id: str
 
 
 class CreateInstanceRequest(_CreateInstanceRequestRequired, total=False):
@@ -703,6 +1009,13 @@ class CreateInstanceRequest(_CreateInstanceRequestRequired, total=False):
     # first boot with a key held by Pantech's key servers, and the instance needs outbound
     # access to them at every boot (the platform keeps that open).
     encrypted: bool
+    # An SSH key from `GET /public/v1/ssh-keys`, installed for the default user.
+    ssh_key_id: str
+    # Required for a Windows image (`os_family: windows`), refused for any other: the password
+    # you sign in with over Remote Desktop as `Administrator`. 12 to 72 characters of letters,
+    # digits and symbols (no spaces), mixing at least three of upper case, lower case, digits
+    # and symbols, and not containing the word `Administrator`.
+    admin_password: str
     # A region from `GET /public/v1/regions`, e.g. `af-abj`.
     region: str
     # Place the instance in this VPC subnet, with a private address only.
@@ -717,15 +1030,16 @@ class CreateInstanceRequest(_CreateInstanceRequestRequired, total=False):
     # organization, so agent sessions (`POST /public/v1/instances/{instance_id}/agent-sessions`)
     # can start with no login to the instance.
     agent_enabled: bool
-    # Turns on dynamic IP once the instance runs: outbound traffic leaves from a dynamic IP that
-    # changes on the schedule, while inbound still reaches the instance's static address.
+    # Turns on a dynamic IP once the instance runs: outbound traffic leaves from the dynamic IP,
+    # which changes on the schedule, while inbound traffic still reaches the instance's static
+    # IP.
     address_rotation: CreateInstanceRequestAddressRotation
 
 
 class _CreateNetworkRequestRequired(TypedDict):
     # 1 to 255 characters, unique among your VPC networks.
     name: str
-    # The VPC's private IPv4 range, e.g. `10.0.0.0/16`.
+    # The VPC's private IPv4 range (RFC 1918), such as a /16.
     cidr: str
 
 
@@ -768,6 +1082,156 @@ class CreateLoadBalancerRequest(_CreateLoadBalancerRequestRequired, total=False)
     cidr_list: List[str]
     # Instances to spread traffic across (at most 50).
     instance_ids: List[str]
+
+
+class _BucketRequired(TypedDict):
+    # The bucket's id, starting `bkt_`.
+    id: str
+    # The bucket's name, used in S3 requests.
+    name: str
+    # The region code.
+    region: str
+    # The S3 endpoint to send requests to, path-style: `<endpoint>/<name>/<key>`.
+    endpoint: str
+    # Your own limit on the bucket's stored bytes; 0 is none.
+    quota_bytes: int
+    # Whether overwritten and deleted objects keep their earlier versions.
+    versioning: bool
+    # Whether objects can be locked against deletion.
+    object_lock: bool
+    # Key prefixes anyone may read without a key, sorted.
+    public_prefixes: List[str]
+    # `provisioning` until the bucket can be used, `updating` while a change is applied.
+    state: Literal["provisioning", "active", "updating", "deleting", "failed", "unknown"]
+    # When it was created.
+    created_at: str
+
+
+class Bucket(_BucketRequired, total=False):
+    """A bucket."""
+
+    # Live stored bytes in the bucket.
+    size_bytes: int
+    # Live object count in the bucket.
+    object_count: int
+    # When deletion started; null while the bucket is active.
+    retired_at: Optional[str]
+    # When the 12-hour removal completes and the name becomes available again.
+    purge_due_at: Optional[str]
+
+
+class BucketList(TypedDict):
+    data: List[Bucket]
+
+
+class CreatedBucket(Bucket):
+    """The new bucket and the operation creating it."""
+
+    # The operation creating the bucket; it succeeds once the bucket is usable.
+    operation_id: str
+
+
+class UpdatedBucket(Bucket):
+    """The bucket and the operation applying the change."""
+
+    # The operation applying the change; null when nothing changed.
+    operation_id: Optional[str]
+
+
+class _CreateBucketRequestRequired(TypedDict):
+    # 3 to 63 lowercase letters, digits and hyphens, starting and ending with a letter or digit.
+    name: str
+
+
+class CreateBucketRequest(_CreateBucketRequestRequired, total=False):
+    # The region code. Defaults to the region object storage is offered in.
+    region: str
+    # Your own limit on stored bytes; 0 or absent is none.
+    quota_bytes: int
+    # Keep earlier versions of overwritten and deleted objects.
+    versioning: bool
+    # Allow objects to be locked against deletion.
+    object_lock: bool
+    # Key prefixes anyone may read without a key, e.g. `public/`.
+    public_prefixes: List[str]
+
+
+class UpdateBucketRequest(TypedDict, total=False):
+    """Send only what changes."""
+
+    # Your own limit on stored bytes; 0 removes it.
+    quota_bytes: int
+    # Keep earlier versions of overwritten and deleted objects.
+    versioning: bool
+    # Replaces the public prefixes; an empty list makes the bucket wholly private.
+    public_prefixes: List[str]
+
+
+class ObjectStorageStatusLimits(TypedDict, total=False):
+    max_buckets: int
+    max_storage_bytes: int
+    max_objects: int
+
+
+class _ObjectStorageStatusRequired(TypedDict):
+    # Whether your organization may create buckets and keys.
+    enabled: bool
+    # The S3 endpoint for the default region.
+    endpoint: str
+    # Object storage is in closed beta.
+    beta: bool
+
+
+class ObjectStorageStatus(_ObjectStorageStatusRequired, total=False):
+    # Whether direct-to-bucket presigned uploads are enabled.
+    direct_upload_enabled: bool
+    limits: Optional[ObjectStorageStatusLimits]
+
+
+class ObjectStorageKey(TypedDict):
+    """An S3 access key, without its secret."""
+
+    # The key's id, starting `osk_`.
+    id: str
+    # The key's name.
+    name: str
+    # The region code.
+    region: str
+    # The S3 access key id S3 tools sign with.
+    access_key_id: str
+    # Whether the key may only read and list.
+    read_only: bool
+    # The bucket names the key may use; empty is every bucket.
+    buckets: List[str]
+    # When it was created.
+    created_at: str
+
+
+class ObjectStorageKeyList(TypedDict):
+    data: List[ObjectStorageKey]
+
+
+class CreatedObjectStorageKey(ObjectStorageKey):
+    """The new key with its secret, shown only now."""
+
+    # The secret. Store it now: it is never shown again.
+    secret_access_key: str
+    # The S3 endpoint to use the key with.
+    endpoint: str
+
+
+class _CreateObjectStorageKeyRequestRequired(TypedDict):
+    # 1 to 64 letters, digits, `-`, `_` or `.`.
+    name: str
+
+
+class CreateObjectStorageKeyRequest(_CreateObjectStorageKeyRequestRequired, total=False):
+    # The region code. Defaults to the region object storage is offered in.
+    region: str
+    # Allow only reading and listing.
+    read_only: bool
+    # Limit the key to these bucket names; absent or empty is every bucket.
+    buckets: List[str]
 
 
 class UpdateLoadBalancerRequest(TypedDict, total=False):
@@ -839,7 +1303,7 @@ class LoadBalancer(TypedDict):
 
 class LoadBalancerList(TypedDict):
     data: List[LoadBalancer]
-    # Always null: this list is returned whole.
+    # Pass as `cursor` for the next page; null on the last one.
     next_cursor: Optional[str]
 
 
@@ -1213,8 +1677,8 @@ class CreateSnapshotRequest(TypedDict):
 class CreateSubnetRequest(TypedDict):
     # 1 to 255 characters.
     name: str
-    # An IPv4 range inside the VPC's CIDR that does not overlap its other subnets, e.g.
-    # `10.0.1.0/24`.
+    # An IPv4 range inside the VPC's CIDR that does not overlap its other subnets, such as a
+    # /24.
     cidr: str
 
 
@@ -1232,7 +1696,7 @@ class CreateVolumeRequest(_CreateVolumeRequestRequired, total=False):
     region: str
     # Attach the new volume at once to this running instance in the same zone.
     instance_id: str
-    # With `instance_id`: an absolute path to mount the volume at, e.g. `/data`.
+    # Optional note of where you plan to mount the volume, an absolute path such as `/data`.
     mount_point: str
     # Optional. `true` asks for an **encrypted data volume**.
     encrypted: bool
@@ -1274,9 +1738,11 @@ class CreateDatabaseRequest(_CreateDatabaseRequestRequired, total=False):
     password: str
     # Data disk size in GB.
     storage_gb: int
+    # Start the new database from this snapshot of one of your databases, instead of empty.
+    source_snapshot_id: str
 
 
-class Database(TypedDict):
+class _DatabaseRequired(TypedDict):
     # The admin login to connect as: the one chosen at create, or `dbadmin`.
     admin_username: str
     # Your security groups attached to the database, in the order attached (at most 5).
@@ -1329,6 +1795,12 @@ class Database(TypedDict):
     created_at: Optional[str]
     # When it last changed (RFC 3339, UTC).
     updated_at: Optional[str]
+
+
+class Database(_DatabaseRequired, total=False):
+    # True when the database refuses plaintext connections and presents a certificate for its
+    # hostname that chains to *Get the database CA certificate*.
+    tls_required: bool
 
 
 class DatabaseAccessRule(TypedDict):
@@ -1658,6 +2130,14 @@ class Image(_ImageRequired, total=False):
     # On an encrypted image, the slug of the plain image it is the encrypted version of (e.g.
     # `ubuntu-24-04` for `ubuntu-24-04-encrypted`); null otherwise.
     encrypted_variant_of: Optional[str]
+    # `linux` images sign in with an SSH key.
+    os_family: Literal["linux", "windows"]
+    # The fewest vCPUs a plan needs for this image; 0 is no minimum.
+    min_vcpu: int
+    # The least memory, in MB, a plan needs for this image; 0 is no minimum.
+    min_memory_mb: int
+    # Whether `agent_enabled` can be set when creating an instance from this image.
+    agent_supported: bool
 
 
 class ImageList(TypedDict):
@@ -1703,6 +2183,10 @@ class Instance(_InstanceRequired, total=False):
     # True when the instance runs an encrypted image: its root disk is encrypted on our storage,
     # with its own key.
     encrypted: bool
+    # `windows` instances sign in over Remote Desktop as `Administrator`, with the password
+    # chosen at creation (or set since with `PUT /instances/{instance_id}/password`); `linux`
+    # instances sign in with an SSH key.
+    os_family: Literal["linux", "windows"]
     # e.g. `af-abj`.
     region: Optional[str]
     # e.g. `af-abj-1`.
@@ -1844,7 +2328,7 @@ class _NetworkRequired(TypedDict):
     id: str
     # Its name, unique among your VPC networks.
     name: str
-    # e.g. `10.0.0.0/16`.
+    # The VPC's private IPv4 range.
     cidr: str
     # What you asked for: `present`, or `deleted` once you deleted it.
     desired_state: Literal["present", "deleted"]
@@ -2185,6 +2669,59 @@ class PublicIPList(TypedDict):
     next_cursor: Optional[str]
 
 
+class _PutAddressRotationRequestRequired(TypedDict):
+    # How often the dynamic IP changes.
+    schedule: Literal["every_12_hours", "daily", "weekly", "monthly"]
+
+
+class PutAddressRotationRequest(_PutAddressRotationRequestRequired, total=False):
+    # `keep` (default): open connections keep the old IP until they close.
+    connections: Literal["keep", "move"]
+    # Allow rotate now. Needs it enabled for your organization.
+    on_demand: bool
+
+
+class _AddressRotationRequired(TypedDict):
+    instance_id: str
+    schedule: Literal["every_12_hours", "daily", "weekly", "monthly"]
+    connections: Literal["keep", "move"]
+    # Whether rotate now is allowed.
+    on_demand: bool
+    # `enabling` until the first dynamic IP is ready, `active`, `degraded` (active on reduced
+    # capacity, or the dynamic IP is not reachable and outbound traffic uses the instance's
+    # static IP until it is restored; see `failure_reason`), `disabling`, `off`, or `failed`
+    # (see `failure_reason`).
+    state: Literal["enabling", "active", "degraded", "disabling", "off", "failed"]
+    # Added to the instance's hourly price while dynamic IP is on.
+    surcharge_percent: float
+    # Rotate-now changes in the last 24 hours.
+    on_demand_used: int
+    on_demand_limit: int
+    # Recent dynamic IP changes, newest first.
+    events: List[AddressRotationEvent]
+
+
+class AddressRotation(_AddressRotationRequired, total=False):
+    # The dynamic IP the instance uses now for outbound traffic.
+    current_address: Optional[str]
+    next_rotation_at: Optional[str]
+    last_rotated_at: Optional[str]
+    # Why the dynamic IP is `failed`, or why it is `degraded` while outbound traffic uses the
+    # instance's static IP.
+    failure_reason: Optional[str]
+
+
+class _AddressRotationEventRequired(TypedDict):
+    kind: Literal["enabled", "scheduled", "on_demand", "failover", "handover", "disabled"]
+    degraded: bool
+    occurred_at: str
+
+
+class AddressRotationEvent(_AddressRotationEventRequired, total=False):
+    from_address: Optional[str]
+    to_address: Optional[str]
+
+
 class _PutSnapshotScheduleRequestRequired(TypedDict):
     # How often: `daily`, `weekly` or `monthly`.
     frequency: Literal["daily", "weekly", "monthly"]
@@ -2211,10 +2748,9 @@ class _RegionPlacementsItemRequired(TypedDict):
 
 class RegionPlacementsItem(_RegionPlacementsItemRequired, total=False):
     unavailable_reason: Optional[str]
-    # The range of the zone's private database network, e.g. `10.250.0.0/20`, when instances
-    # there can add a private network interface (`POST
-    # /public/v1/instances/{instance_id}/private-network`); null otherwise, and in every VPC
-    # zone.
+    # The range of the zone's private database network, when instances there can add a private
+    # network interface (`POST /public/v1/instances/{instance_id}/private-network`); null
+    # otherwise, and in every VPC zone.
     private_network_cidr: Optional[str]
 
 
@@ -2351,8 +2887,8 @@ class _SecurityGroupRuleRequired(TypedDict):
     direction: Literal["ingress", "egress"]
     # `tcp`, `udp`, `icmp` or `all`.
     protocol: Literal["tcp", "udp", "icmp", "all"]
-    # One IPv4 CIDR: the source for `ingress`, the destination for `egress`, e.g.
-    # `203.0.113.4/32`.
+    # One IPv4 CIDR: the source for `ingress`, the destination for `egress`, e.g. `<your-ip>/32`
+    # for one address.
     cidr: str
 
 
@@ -2660,7 +3196,7 @@ class Volume(_VolumeRequired, total=False):
     attached_instance_name: Optional[str]
     # Where an attach in progress is moving it.
     desired_instance_id: Optional[str]
-    # Where it is mounted, when mounted at create; null otherwise.
+    # The `mount_point` sent at create, as recorded; null when none was sent.
     mount_point: Optional[str]
     # Set when restored from a snapshot.
     source_snapshot_id: Optional[str]
@@ -2869,6 +3405,70 @@ class CloudConnectionSetup(TypedDict):
     agent: CloudAgentSetup
 
 
+class CloudAgentSetup(TypedDict):
+    """How to run the Pantech Migrate agent; null for federated providers."""
+
+    # The agent's container image.
+    image: str
+    # Where the agent's binaries are published.
+    download_url: Optional[str]
+    api_url: str
+    # The environment variables the agent reads your read-only credential from, on your machine.
+    token_variables: List[str]
+    token_how_to: str
+    # Contains `<ENROLLMENT_CODE>` where the one-time code goes.
+    enroll_command: str
+    run_command: str
+    container_command: str
+
+
+class CloudAgentStatus(TypedDict):
+    """The connection's enrolled agent; null when none is."""
+
+    id: str
+    # Whether it polled in the last 2 minutes.
+    online: bool
+    agent_version: str
+    platform: str
+    enrolled_at: str
+    last_seen_at: str
+    credential_expires_at: str
+
+
+class CloudGCPFederation(TypedDict):
+    """What the Google Cloud setup printed."""
+
+    project_number: str
+    pool_id: str
+    provider_id: str
+    service_account_email: str
+    # The projects to scan, 1 to 20.
+    project_ids: List[str]
+
+
+class CloudAzureFederation(TypedDict):
+    """What the Azure setup printed."""
+
+    tenant_id: str
+    # The app registration's application (client) ID.
+    client_id: str
+    # The subscriptions to scan, 1 to 20.
+    subscription_ids: List[str]
+
+
+class CloudHuaweiFederationProjectsItem(TypedDict):
+    region: str
+    id: str
+
+
+class CloudHuaweiFederation(TypedDict):
+    """Your Huawei Cloud identity provider and the projects to scan."""
+
+    identity_provider_id: str
+    # 1 to 20 region projects.
+    projects: List[CloudHuaweiFederationProjectsItem]
+
+
 class CloudConnection(TypedDict):
     id: str
     provider: Literal[
@@ -2983,6 +3583,193 @@ class CloudScanList(TypedDict):
     data: List[CloudScan]
     # Always null: this list is returned whole.
     next_cursor: Optional[str]
+
+
+class BucketImportFailure(TypedDict):
+    """Why it failed; null when it didn't."""
+
+    code: str
+    message: str
+
+
+class CopyAccessRequest(TypedDict, total=False):
+    # The source buckets Pantech may copy, 1 to 50, each once.
+    buckets: List[str]
+    # The copy stack's `CopyRoleArn` output.
+    role_arn: str
+    # Verify the role again.
+    retry: bool
+
+
+class CopyAccessBucket(TypedDict):
+    name: str
+    region: Optional[str]
+    versioning: Optional[str]
+    # Verified: an import may copy this bucket.
+    ready: bool
+    failure: BucketImportFailure
+
+
+class CopyAccessSetup(TypedDict):
+    issuer_url: str
+    audience: str
+    # The copy role's token subject: the connection id followed by `:copy`.
+    subject: str
+    # The CloudFormation template (JSON text) for a role that may read only the chosen buckets;
+    # null until buckets are chosen.
+    template: Optional[str]
+
+
+class CopyAccess(TypedDict):
+    connection_id: str
+    status: Literal["not_requested", "awaiting_role", "verifying", "verified", "failed"]
+    failure: BucketImportFailure
+    role_arn: Optional[str]
+    buckets: List[CopyAccessBucket]
+    verified_at: Optional[str]
+    setup: CopyAccessSetup
+
+
+class ResyncBucketImportRequest(TypedDict, total=False):
+    # Off unless set. After this pass has listed the whole source, delete the objects this
+    # import copied that the source no longer has, and only those still holding the bytes the
+    # import wrote.
+    mirror_deletes: bool
+
+
+class _StartBucketImportRequestRequired(TypedDict):
+    connection_id: str
+    # The source bucket's name.
+    source_bucket: str
+
+
+class StartBucketImportRequest(_StartBucketImportRequestRequired, total=False):
+    # A new Pantech bucket to make and copy into.
+    destination_bucket_name: str
+    # An existing Pantech bucket of the organization to copy into.
+    destination_bucket_id: str
+    # Versioning on a new bucket.
+    versioning: bool
+    # Make a new bucket publicly readable.
+    public_read: bool
+    # The plan the move belongs to; its size for the bucket is checked against the storage left.
+    migration_id: str
+
+
+class BucketImportProgress(TypedDict):
+    objects_copied: int
+    # Already in the Pantech bucket unchanged.
+    objects_skipped: int
+    objects_failed: int
+    bytes_copied: int
+    bytes_skipped: int
+
+
+class BucketImportObjectFailure(TypedDict):
+    key: str
+    reason: Literal[
+        "object_archived",
+        "object_access_denied",
+        "invalid_key",
+        "object_too_large",
+        "source_changed",
+        "verification_failed",
+        "transfer_failed",
+        "destination_rejected",
+    ]
+    message: str
+    at: str
+
+
+class BucketImportEvent(TypedDict):
+    action: Literal[
+        "started",
+        "cancel_requested",
+        "resync_requested",
+        "succeeded",
+        "failed",
+        "cancelled",
+        "mirror_deleted",
+        "mirror_skipped",
+    ]
+    # Null for Pantech's own steps.
+    actor_user_id: Optional[str]
+    detail: Optional[str]
+    occurred_at: str
+
+
+class BucketImportSource(TypedDict):
+    provider: str
+    bucket: str
+    region: Optional[str]
+
+
+class BucketImportDestination(TypedDict):
+    bucket_id: str
+    bucket_name: str
+    public_read: bool
+
+
+_BucketImportRequired = TypedDict(
+    "_BucketImportRequired",
+    {
+        "id": str,
+        "connection_id": str,
+        "migration_id": Optional[str],
+        "source": BucketImportSource,
+        "destination": BucketImportDestination,
+        "status": Literal["queued", "running", "succeeded", "failed", "cancelled"],
+        "failure": BucketImportFailure,
+        "cancel_requested": bool,
+        # 1 for the first copy; each resync adds one.
+        "pass": int,
+        "progress": BucketImportProgress,
+        # Bytes copied over every pass.
+        "total_bytes_copied": int,
+        # The current pass was asked to delete what this import copied and the source no longer
+        # has.
+        "mirror_deletes": bool,
+        # Objects deleted by mirror passes, over every pass.
+        "objects_deleted": int,
+        # When a queued import waiting on an unreachable side is tried again.
+        "next_attempt_at": Optional[str],
+        "created_at": str,
+        "started_at": Optional[str],
+        "finished_at": Optional[str],
+        "updated_at": str,
+        # The first 100 objects that failed this pass; null in a list.
+        "failures": Optional[List[BucketImportObjectFailure]],
+        # The audit trail; null in a list.
+        "events": Optional[List[BucketImportEvent]],
+    },
+)
+
+
+class BucketImport(_BucketImportRequired):
+    pass
+
+
+class BucketImportList(TypedDict):
+    data: List[BucketImport]
+    # Always null: this list is returned whole.
+    next_cursor: Optional[str]
+
+
+class MigrationBucketTarget(TypedDict):
+    """The Pantech bucket a bucket item becomes; null for every other kind."""
+
+    # A valid Pantech bucket name made from the source's; null when none could be made.
+    name: Optional[str]
+    region: str
+    versioning: bool
+    # The source bucket was public.
+    public_read: bool
+    # The source's own daily metric, read by the scan; null when unknown.
+    size_bytes: Optional[int]
+    # The source's own daily metric, read by the scan; null when unknown.
+    object_count: Optional[int]
+    # The day (YYYY-MM-DD) the size and object count describe: show them as "as of" this day.
+    size_as_of: Optional[str]
 
 
 class MigrationListener(TypedDict):
@@ -3134,6 +3921,104 @@ class CloudInventory(TypedDict):
     kubernetes_clusters: List[CloudKubernetesCluster]
 
 
+class CloudProvider(TypedDict):
+    slug: Literal["aws", "gcp", "azure", "huawei", "digitalocean", "hetzner", "linode", "vultr", "contabo", "openstack"]
+    name: str
+    access: Literal["federated", "agent"]
+    # Whether a scan reads the source's spend.
+    cost_readable: bool
+    # Whether a scan lists the people with access.
+    people_readable: bool
+    # Whether this deployment can connect it now.
+    available: bool
+
+
+class CloudAgentEnrollment(TypedDict):
+    # The one-time enrollment code, shown only now.
+    code: str
+    expires_at: str
+    enroll_command: str
+
+
+class SendMigrationInvitesRequest(TypedDict):
+    # The `user` items to invite, by key: 1 to 50.
+    keys: List[str]
+
+
+class MigrationInviteResult(TypedDict):
+    key: str
+    email: Optional[str]
+    role: Optional[str]
+    # `invited`; `already_invited` (from this plan or by hand); `already_member`;
+    # `role_not_allowed` (an admin can't invite an admin: change the person's role to member or
+    # ask an owner); `skipped` (see reason); `failed` (try again).
+    outcome: Literal["invited", "already_invited", "already_member", "role_not_allowed", "skipped", "failed"]
+    # Why a person was skipped: `email_missing`, `excluded`, `not_a_person`, `unknown_item`.
+    reason: Optional[str]
+    invite_id: Optional[str]
+
+
+class MigrationInvites(TypedDict):
+    results: List[MigrationInviteResult]
+    migration: Migration
+
+
+class CloudProviderList(TypedDict):
+    data: List[CloudProvider]
+    # Always null: this list is returned whole.
+    next_cursor: Optional[str]
+
+
+class CloudKubernetesCluster(TypedDict):
+    """A Kubernetes cluster the scan found."""
+
+    id: str
+    name: str
+    region: str
+    # Who runs the control plane: eks, gke, aks, doks, lke or self_managed.
+    provider: str
+    version: Optional[str]
+    endpoint_public: bool
+    node_pools: List[CloudNodePool]
+    addons: List[str]
+    created_at: Optional[str]
+
+
+class CloudNodePool(TypedDict):
+    name: str
+    instance_type: Optional[str]
+    vcpu: Optional[int]
+    memory_mib: Optional[int]
+    architecture: str
+    gpu: bool
+    windows: bool
+    desired: int
+    autoscaling: bool
+    min: int
+    max: int
+
+
+class MigrationKubernetesTarget(TypedDict):
+    """What a kubernetes_cluster item becomes on Pantech; null for every other kind."""
+
+    version_id: Optional[str]
+    version: Optional[str]
+    node_pools: List[MigrationNodePool]
+    addons: List[str]
+    # The customer consented to a lower Kubernetes version than the source runs.
+    allow_downgrade: bool
+
+
+class MigrationNodePool(TypedDict):
+    name: str
+    plan_slug: Optional[str]
+    count: int
+    autoscaling: bool
+    min: int
+    max: int
+    source_name: str
+
+
 class MigrationFlag(TypedDict):
     code: str
     message: str
@@ -3151,6 +4036,7 @@ class MigrationRule(TypedDict):
 class MigrationItemTarget(TypedDict):
     """What the item becomes on Pantech; fields that don't apply to its kind are null or empty."""
 
+    bucket: MigrationBucketTarget
     plan_slug: Optional[str]
     disk_gb: Optional[int]
     cidr: Optional[str]
@@ -3170,7 +4056,6 @@ class MigrationItemTarget(TypedDict):
     # The Pantech invite sent to this person from this plan.
     invite_id: Optional[str]
     invited_at: Optional[str]
-    bucket: MigrationBucketTarget
     kubernetes: MigrationKubernetesTarget
 
 
@@ -3253,6 +4138,168 @@ class Migration(TypedDict):
 
 class MigrationList(TypedDict):
     data: List[Migration]
+    # Always null: this list is returned whole.
+    next_cursor: Optional[str]
+
+
+class _StartDatabaseImportRequestRequired(TypedDict):
+    # The plan item's key: one of the migration's `database` items.
+    item_key: str
+    # One of your Pantech databases with the same engine as the source.
+    destination_database_id: str
+    # The source's name in your Migrate agent's configuration, 1 to 64 of letters, digits, `.`,
+    # `_` and `-`.
+    source_ref: str
+
+
+class StartDatabaseImportRequest(_StartDatabaseImportRequestRequired, total=False):
+    # The database to create and fill on the destination; it must be empty.
+    target_database: str
+    # `dump` copies once (stop writes to the source first).
+    mode: Literal["dump", "replicate"]
+
+
+class DatabaseImport(TypedDict):
+    id: str
+    migration_id: str
+    item_key: str
+    destination_database_id: str
+    target_database: str
+    mode: Literal["dump", "replicate"]
+    source_ref: str
+    # The source's engine family.
+    engine: Literal["postgres", "mysql", "mariadb"]
+    status: Literal[
+        "awaiting_agent",
+        "preflight",
+        "ready",
+        "blocked",
+        "copying",
+        "replicating",
+        "cutting_over",
+        "verifying",
+        "verifying_failed",
+        "completed",
+        "cancelling",
+        "cancelled",
+        "failed",
+    ]
+    failure: DatabaseImportFailure
+    cutover_requested: bool
+    cancel_requested: bool
+    # A new pre-flight was asked for and the agent has not run it yet.
+    readiness_requested: bool
+    # The import login and its loopback-only access were removed from the destination.
+    access_revoked: bool
+    # A Migrate agent holds this import now.
+    agent_connected: bool
+    # Replication lag in bytes of source WAL not yet applied; null in a dump or before
+    # replication starts.
+    lag_bytes: Optional[int]
+    # The last applied source position (replicate only).
+    position: Optional[str]
+    readiness: DatabaseImportReadiness
+    destination: DatabaseImportDestination
+    # Per-table progress; null in a list.
+    tables: Optional[List[DatabaseImportTable]]
+    # Always false: moving data is free.
+    charged: bool
+    version: int
+    created_at: str
+    updated_at: str
+    finished_at: Optional[str]
+
+
+class DatabaseImportFailure(TypedDict):
+    """Why the import stopped; null while it has not."""
+
+    # `statement_refused`, `chunk_invalid`, `access_revoked`, `destination_unavailable`, or one
+    # the agent reported: `source_unreachable`, `source_auth_failed`,
+    # `source_permission_denied`, `source_not_configured`, `dump_tool_missing`,
+    # `source_changed`, `internal`.
+    code: str
+    message: str
+
+
+class DatabaseImportReadiness(TypedDict):
+    """The latest pre-flight; null until the agent ran one."""
+
+    checked_at: str
+    # A blocking issue stops the import until it is fixed and readiness is checked again.
+    blocked: bool
+    issues: List[DatabaseImportIssue]
+    source: DatabaseImportSource
+
+
+class DatabaseImportIssue(TypedDict):
+    # For example `source_version_newer`, `extension_unavailable`, `size_exceeds_storage`,
+    # `size_not_measured`, `table_without_primary_key`, `replication_check_failed`,
+    # `mode_not_available`, `target_not_empty`, `destination_not_ready`,
+    # `destination_not_supported`.
+    code: str
+    blocking: bool
+    message: str
+    # A copy-paste fix for the source's provider (an RDS parameter group setting, a Cloud SQL
+    # flag, an Azure server parameter, SQL).
+    fix: Optional[str]
+    # What the issue is about (an extension, tables, a check).
+    subject: Optional[str]
+
+
+class DatabaseImportSource(TypedDict):
+    """What the Migrate agent measured on the source."""
+
+    engine: str
+    version: Optional[str]
+    # `aws_rds`, `gcp_cloudsql`, `azure`, `digitalocean` or `self_hosted`, as the agent detected
+    # it.
+    provider: Optional[str]
+    database: Optional[str]
+    size_bytes: Optional[int]
+    extensions: List[str]
+    table_count: int
+
+
+class DatabaseImportDestination(TypedDict):
+    """What your Pantech database reported over the import's own connection; null in a list."""
+
+    # The import login's state on the destination.
+    access_state: Literal["not_prepared", "requested", "active", "revoking", "revoked", "failed"]
+    measured: bool
+    engine: Optional[str]
+    server_version: Optional[str]
+    disk_available_bytes: Optional[int]
+    disk_total_bytes: Optional[int]
+    # Tables already in the target database; an import needs an empty one.
+    target_tables: Optional[int]
+    trusted_extensions: List[str]
+
+
+class DatabaseImportTable(TypedDict):
+    schema: Optional[str]
+    name: str
+    has_primary_key: bool
+    status: Literal["pending", "copying", "copied", "verified", "verify_failed"]
+    pages_copied: int
+    rows_copied: int
+    bytes_copied: int
+    verification: DatabaseImportVerification
+    updated_at: str
+
+
+class DatabaseImportVerification(TypedDict):
+    """The table's comparison; null until it was verified."""
+
+    source_rows: int
+    destination_rows: int
+    # Key ranges whose rows were checksummed on both sides.
+    samples_checked: int
+    mismatched_samples: int
+    passed: bool
+
+
+class DatabaseImportList(TypedDict):
+    data: List[DatabaseImport]
     # Always null: this list is returned whole.
     next_cursor: Optional[str]
 
@@ -3538,13 +4585,20 @@ class DomainSearchResultPrice(_DomainSearchResultPriceRequired, total=False):
     privacy_always_on: bool
 
 
-class DomainSearchResult(TypedDict):
+class _DomainSearchResultRequired(TypedDict):
     name: str
     tld: str
     # `unknown`: it could not be checked; try again.
     status: Literal["available", "unavailable", "unknown"]
     # Its TLD's price; null when the TLD is not sold.
     price: Optional[DomainSearchResultPrice]
+
+
+class DomainSearchResult(_DomainSearchResultRequired, total=False):
+    # Why an `unknown` name could not be checked: `registry_timeout` (its registry did not
+    # answer in time) or `registry_unavailable` (its registry refused, failed or could not be
+    # reached).
+    reason: Optional[str]
 
 
 class DomainSearchResultList(TypedDict):
@@ -4137,1194 +5191,12 @@ class RevokeCertificateRequest(TypedDict, total=False):
     reason: Literal["unspecified", "key_compromise"]
 
 
-class CloudAgentSetup(TypedDict):
-    """How to run the Pantech Migrate agent; null for federated providers."""
-
-    # The agent's container image.
-    image: str
-    # Where the agent's binaries are published.
-    download_url: Optional[str]
-    api_url: str
-    # The environment variables the agent reads your read-only credential from, on your machine.
-    token_variables: List[str]
-    token_how_to: str
-    # Contains `<ENROLLMENT_CODE>` where the one-time code goes.
-    enroll_command: str
-    run_command: str
-    container_command: str
-
-
-class CloudAgentStatus(TypedDict):
-    """The connection's enrolled agent; null when none is."""
-
-    id: str
-    # Whether it polled in the last 2 minutes.
-    online: bool
-    agent_version: str
-    platform: str
-    enrolled_at: str
-    last_seen_at: str
-    credential_expires_at: str
-
-
-class CloudGCPFederation(TypedDict):
-    """What the Google Cloud setup printed."""
-
-    project_number: str
-    pool_id: str
-    provider_id: str
-    service_account_email: str
-    # The projects to scan, 1 to 20.
-    project_ids: List[str]
-
-
-class CloudAzureFederation(TypedDict):
-    """What the Azure setup printed."""
-
-    tenant_id: str
-    # The app registration's application (client) ID.
-    client_id: str
-    # The subscriptions to scan, 1 to 20.
-    subscription_ids: List[str]
-
-
-class CloudHuaweiFederationProjectsItem(TypedDict):
-    region: str
-    id: str
-
-
-class CloudHuaweiFederation(TypedDict):
-    """Your Huawei Cloud identity provider and the projects to scan."""
-
-    identity_provider_id: str
-    # 1 to 20 region projects.
-    projects: List[CloudHuaweiFederationProjectsItem]
-
-
-class CloudProvider(TypedDict):
-    slug: Literal["aws", "gcp", "azure", "huawei", "digitalocean", "hetzner", "linode", "vultr", "contabo", "openstack"]
-    name: str
-    access: Literal["federated", "agent"]
-    # Whether a scan reads the source's spend.
-    cost_readable: bool
-    # Whether a scan lists the people with access.
-    people_readable: bool
-    # Whether this deployment can connect it now.
-    available: bool
-
-
-class CloudAgentEnrollment(TypedDict):
-    # The one-time enrollment code, shown only now.
-    code: str
-    expires_at: str
-    enroll_command: str
-
-
-class SendMigrationInvitesRequest(TypedDict):
-    # The `user` items to invite, by key: 1 to 50.
-    keys: List[str]
-
-
-class MigrationInviteResult(TypedDict):
-    key: str
-    email: Optional[str]
-    role: Optional[str]
-    # `invited`; `already_invited` (from this plan or by hand); `already_member`;
-    # `role_not_allowed` (an admin can't invite an admin: change the person's role to member or
-    # ask an owner); `skipped` (see reason); `failed` (try again).
-    outcome: Literal["invited", "already_invited", "already_member", "role_not_allowed", "skipped", "failed"]
-    # Why a person was skipped: `email_missing`, `excluded`, `not_a_person`, `unknown_item`.
-    reason: Optional[str]
-    invite_id: Optional[str]
-
-
-class MigrationInvites(TypedDict):
-    results: List[MigrationInviteResult]
-    migration: Migration
-
-
-class CloudProviderList(TypedDict):
-    data: List[CloudProvider]
-    # Always null: this list is returned whole.
-    next_cursor: Optional[str]
-
-
-class BucketImportFailure(TypedDict):
-    """Why it failed; null when it didn't."""
-
-    code: str
-    message: str
-
-
-class CopyAccessRequest(TypedDict, total=False):
-    # The source buckets Pantech may copy, 1 to 50, each once.
-    buckets: List[str]
-    # The copy stack's `CopyRoleArn` output.
-    role_arn: str
-    # Verify the role again.
-    retry: bool
-
-
-class CopyAccessBucket(TypedDict):
-    name: str
-    region: Optional[str]
-    versioning: Optional[str]
-    # Verified: an import may copy this bucket.
-    ready: bool
-    failure: BucketImportFailure
-
-
-class CopyAccessSetup(TypedDict):
-    issuer_url: str
-    audience: str
-    # The copy role's token subject: the connection id followed by `:copy`.
-    subject: str
-    # The CloudFormation template (JSON text) for a role that may read only the chosen buckets;
-    # null until buckets are chosen.
-    template: Optional[str]
-
-
-class CopyAccess(TypedDict):
-    connection_id: str
-    status: Literal["not_requested", "awaiting_role", "verifying", "verified", "failed"]
-    failure: BucketImportFailure
-    role_arn: Optional[str]
-    buckets: List[CopyAccessBucket]
-    verified_at: Optional[str]
-    setup: CopyAccessSetup
-
-
-class ResyncBucketImportRequest(TypedDict, total=False):
-    # Off unless set. After this pass has listed the whole source, delete the objects this
-    # import copied that the source no longer has, and only those still holding the bytes the
-    # import wrote.
-    mirror_deletes: bool
-
-
-class _StartBucketImportRequestRequired(TypedDict):
-    connection_id: str
-    # The source bucket's name.
-    source_bucket: str
-
-
-class StartBucketImportRequest(_StartBucketImportRequestRequired, total=False):
-    # A new Pantech bucket to make and copy into.
-    destination_bucket_name: str
-    # An existing Pantech bucket of the organization to copy into.
-    destination_bucket_id: str
-    # Versioning on a new bucket.
-    versioning: bool
-    # Make a new bucket publicly readable.
-    public_read: bool
-    # The plan the move belongs to; its size for the bucket is checked against the storage left.
-    migration_id: str
-
-
-class BucketImportProgress(TypedDict):
-    objects_copied: int
-    # Already in the Pantech bucket unchanged.
-    objects_skipped: int
-    objects_failed: int
-    bytes_copied: int
-    bytes_skipped: int
-
-
-class BucketImportObjectFailure(TypedDict):
-    key: str
-    reason: Literal[
-        "object_archived",
-        "object_access_denied",
-        "invalid_key",
-        "object_too_large",
-        "source_changed",
-        "verification_failed",
-        "transfer_failed",
-        "destination_rejected",
-    ]
-    message: str
-    at: str
-
-
-class BucketImportEvent(TypedDict):
-    action: Literal[
-        "started",
-        "cancel_requested",
-        "resync_requested",
-        "succeeded",
-        "failed",
-        "cancelled",
-        "mirror_deleted",
-        "mirror_skipped",
-    ]
-    # Null for Pantech's own steps.
-    actor_user_id: Optional[str]
-    detail: Optional[str]
-    occurred_at: str
-
-
-class BucketImportSource(TypedDict):
-    provider: str
-    bucket: str
-    region: Optional[str]
-
-
-class BucketImportDestination(TypedDict):
-    bucket_id: str
-    bucket_name: str
-    public_read: bool
-
-
-_BucketImportRequired = TypedDict(
-    "_BucketImportRequired",
-    {
-        "id": str,
-        "connection_id": str,
-        "migration_id": Optional[str],
-        "source": BucketImportSource,
-        "destination": BucketImportDestination,
-        "status": Literal["queued", "running", "succeeded", "failed", "cancelled"],
-        "failure": BucketImportFailure,
-        "cancel_requested": bool,
-        # 1 for the first copy; each resync adds one.
-        "pass": int,
-        "progress": BucketImportProgress,
-        # Bytes copied over every pass.
-        "total_bytes_copied": int,
-        # The current pass was asked to delete what this import copied and the source no longer
-        # has.
-        "mirror_deletes": bool,
-        # Objects deleted by mirror passes, over every pass.
-        "objects_deleted": int,
-        # When a queued import waiting on an unreachable side is tried again.
-        "next_attempt_at": Optional[str],
-        "created_at": str,
-        "started_at": Optional[str],
-        "finished_at": Optional[str],
-        "updated_at": str,
-        # The first 100 objects that failed this pass; null in a list.
-        "failures": Optional[List[BucketImportObjectFailure]],
-        # The audit trail; null in a list.
-        "events": Optional[List[BucketImportEvent]],
-    },
-)
-
-
-class BucketImport(_BucketImportRequired):
-    pass
-
-
-class BucketImportList(TypedDict):
-    data: List[BucketImport]
-    # Always null: this list is returned whole.
-    next_cursor: Optional[str]
-
-
-class MigrationBucketTarget(TypedDict):
-    """The Pantech bucket a bucket item becomes; null for every other kind."""
-
-    # A valid Pantech bucket name made from the source's; null when none could be made.
-    name: Optional[str]
-    region: str
-    versioning: bool
-    # The source bucket was public.
-    public_read: bool
-    # The source's own daily metric, read by the scan; null when unknown.
-    size_bytes: Optional[int]
-    # The source's own daily metric, read by the scan; null when unknown.
-    object_count: Optional[int]
-    # The day (YYYY-MM-DD) the size and object count describe: show them as "as of" this day.
-    size_as_of: Optional[str]
-
-
-class _StartServerCopyRequestRequired(TypedDict):
-    # The planned server's item key.
-    item_key: str
-
-
-class StartServerCopyRequest(_StartServerCopyRequestRequired, total=False):
-    source: Literal["agent", "aws_snapshot"]
-    # The new instance's name; the source's when empty.
-    name: str
-    # Overrides the item's plan.
-    plan_slug: str
-    subnet_id: str
-    security_group_id: str
-    # Optional. The copied disk keeps its own users and keys.
-    ssh_key_id: str
-    aws: ServerCopyAWSSource
-
-
-class _ServerCopyAWSSourceRequired(TypedDict):
-    # The copy stack's CopyRoleArn output, never the discover role.
-    copy_role_arn: str
-
-
-class ServerCopyAWSSource(_ServerCopyAWSSourceRequired, total=False):
-    # The copy role may snapshot the server's volumes itself.
-    create_snapshots: bool
-    # The first pass's snapshot for each volume id, tagged pantech-migrate-connection.
-    snapshots: Dict[str, str]
-
-
-class ServerCopyActRequest(TypedDict, total=False):
-    # The next pass's snapshot for each volume id, for an AWS copy that makes none itself.
-    snapshots: Dict[str, str]
-
-
-class ServerCopyTemplate(TypedDict):
-    # CloudFormation JSON.
-    template: str
-    snapshot_tag: Dict[str, str]
-
-
-class ServerCopyList(TypedDict):
-    data: List[ServerCopy]
-    # Always null: this list is returned whole.
-    next_cursor: Optional[str]
-
-
-class ServerCopyFailure(TypedDict, total=False):
-    code: str
-    message: str
-
-
-class ServerCopyInstance(TypedDict, total=False):
-    name: str
-    plan_slug: str
-    region: str
-    subnet_id: Optional[str]
-    security_group_id: Optional[str]
-    ssh_key_id: Optional[str]
-    # Set once the instance is being created.
-    id: Optional[str]
-    order_id: Optional[str]
-
-
-class ServerCopyDisksItem(TypedDict, total=False):
-    index: int
-    role: Literal["root", "data"]
-    source: str
-    size_bytes: int
-    snapshot_id: Optional[str]
-    volume_id: Optional[str]
-
-
-class ServerCopyFlagsItem(TypedDict, total=False):
-    code: str
-    blocking: bool
-    message: str
-
-
-class ServerCopyPass(TypedDict, total=False):
-    number: int
-    kind: Literal["full", "delta", "final"]
-    started_at: Optional[str]
-
-
-class ServerCopyProgress(TypedDict, total=False):
-    chunks_total: int
-    chunks_done: int
-    bytes_total: int
-    bytes_uploaded: int
-    wire_bytes: int
-    eta_seconds: Optional[int]
-
-
-class _ServerCopyRequired(TypedDict):
-    # `sco_…`
-    id: str
-    migration_id: str
-    item_key: str
-    connection_id: str
-    source: Literal["agent", "aws_snapshot"]
-    status: Literal[
-        "waiting", "copying", "synced", "importing", "creating_instance", "completed", "failed", "cancelled"
-    ]
-    os_family: Literal["linux", "windows"]
-    instance: ServerCopyInstance
-    disks: List[ServerCopyDisksItem]
-    flags: List[ServerCopyFlagsItem]
-    progress: ServerCopyProgress
-    expires_at: str
-    created_at: str
-    updated_at: str
-
-
-_ServerCopyOptional = TypedDict(
-    "_ServerCopyOptional",
-    {
-        "failure": Optional[ServerCopyFailure],
-        "boot_mode": Optional[str],
-        "pass": Optional[ServerCopyPass],
-        "pending_pass": Optional[str],
-        "synced_at": Optional[str],
-        "completed_at": Optional[str],
-    },
-    total=False,
-)
-
-
-class ServerCopy(_ServerCopyRequired, _ServerCopyOptional):
-    pass
-
-
-class _StartDatabaseImportRequestRequired(TypedDict):
-    # The plan item's key: one of the migration's `database` items.
-    item_key: str
-    # One of your Pantech databases with the same engine as the source.
-    destination_database_id: str
-    # The source's name in your Migrate agent's configuration, 1 to 64 of letters, digits, `.`,
-    # `_` and `-`.
-    source_ref: str
-
-
-class StartDatabaseImportRequest(_StartDatabaseImportRequestRequired, total=False):
-    # The database to create and fill on the destination; it must be empty.
-    target_database: str
-    # `dump` copies once (stop writes to the source first).
-    mode: Literal["dump", "replicate"]
-
-
-class DatabaseImport(TypedDict):
-    id: str
-    migration_id: str
-    item_key: str
-    destination_database_id: str
-    target_database: str
-    mode: Literal["dump", "replicate"]
-    source_ref: str
-    # The source's engine family.
-    engine: Literal["postgres", "mysql", "mariadb"]
-    status: Literal[
-        "awaiting_agent",
-        "preflight",
-        "ready",
-        "blocked",
-        "copying",
-        "replicating",
-        "cutting_over",
-        "verifying",
-        "verifying_failed",
-        "completed",
-        "cancelling",
-        "cancelled",
-        "failed",
-    ]
-    failure: DatabaseImportFailure
-    cutover_requested: bool
-    cancel_requested: bool
-    # A new pre-flight was asked for and the agent has not run it yet.
-    readiness_requested: bool
-    # The import login and its loopback-only access were removed from the destination.
-    access_revoked: bool
-    # A Migrate agent holds this import now.
-    agent_connected: bool
-    # Replication lag in bytes of source WAL not yet applied; null in a dump or before
-    # replication starts.
-    lag_bytes: Optional[int]
-    # The last applied source position (replicate only).
-    position: Optional[str]
-    readiness: DatabaseImportReadiness
-    destination: DatabaseImportDestination
-    # Per-table progress; null in a list.
-    tables: Optional[List[DatabaseImportTable]]
-    # Always false: moving data is free.
-    charged: bool
-    version: int
-    created_at: str
-    updated_at: str
-    finished_at: Optional[str]
-
-
-class DatabaseImportFailure(TypedDict):
-    """Why the import stopped; null while it has not."""
-
-    # `statement_refused`, `chunk_invalid`, `access_revoked`, `destination_unavailable`, or one
-    # the agent reported: `source_unreachable`, `source_auth_failed`,
-    # `source_permission_denied`, `source_not_configured`, `dump_tool_missing`,
-    # `source_changed`, `internal`.
-    code: str
-    message: str
-
-
-class DatabaseImportReadiness(TypedDict):
-    """The latest pre-flight; null until the agent ran one."""
-
-    checked_at: str
-    # A blocking issue stops the import until it is fixed and readiness is checked again.
-    blocked: bool
-    issues: List[DatabaseImportIssue]
-    source: DatabaseImportSource
-
-
-class DatabaseImportIssue(TypedDict):
-    # For example `source_version_newer`, `extension_unavailable`, `size_exceeds_storage`,
-    # `size_not_measured`, `table_without_primary_key`, `replication_check_failed`,
-    # `mode_not_available`, `target_not_empty`, `destination_not_ready`,
-    # `destination_not_supported`.
-    code: str
-    blocking: bool
-    message: str
-    # A copy-paste fix for the source's provider (an RDS parameter group setting, a Cloud SQL
-    # flag, an Azure server parameter, SQL).
-    fix: Optional[str]
-    # What the issue is about (an extension, tables, a check).
-    subject: Optional[str]
-
-
-class DatabaseImportSource(TypedDict):
-    """What the Migrate agent measured on the source."""
-
-    engine: str
-    version: Optional[str]
-    # `aws_rds`, `gcp_cloudsql`, `azure`, `digitalocean` or `self_hosted`, as the agent detected
-    # it.
-    provider: Optional[str]
-    database: Optional[str]
-    size_bytes: Optional[int]
-    extensions: List[str]
-    table_count: int
-
-
-class DatabaseImportDestination(TypedDict):
-    """What your Pantech database reported over the import's own connection; null in a list."""
-
-    # The import login's state on the destination.
-    access_state: Literal["not_prepared", "requested", "active", "revoking", "revoked", "failed"]
-    measured: bool
-    engine: Optional[str]
-    server_version: Optional[str]
-    disk_available_bytes: Optional[int]
-    disk_total_bytes: Optional[int]
-    # Tables already in the target database; an import needs an empty one.
-    target_tables: Optional[int]
-    trusted_extensions: List[str]
-
-
-class DatabaseImportTable(TypedDict):
-    schema: Optional[str]
-    name: str
-    has_primary_key: bool
-    status: Literal["pending", "copying", "copied", "verified", "verify_failed"]
-    pages_copied: int
-    rows_copied: int
-    bytes_copied: int
-    verification: DatabaseImportVerification
-    updated_at: str
-
-
-class DatabaseImportVerification(TypedDict):
-    """The table's comparison; null until it was verified."""
-
-    source_rows: int
-    destination_rows: int
-    # Key ranges whose rows were checksummed on both sides.
-    samples_checked: int
-    mismatched_samples: int
-    passed: bool
-
-
-class DatabaseImportList(TypedDict):
-    data: List[DatabaseImport]
-    # Always null: this list is returned whole.
-    next_cursor: Optional[str]
-
-
-class KubernetesMoveFailure(TypedDict):
-    """Why the move, or its last step, failed; null when nothing failed."""
-
-    code: str
-    message: str
-
-
-class KubernetesMoveFlag(TypedDict):
-    code: str
-    message: str
-
-
-class KubernetesMoveRef(TypedDict):
-    # API group; empty for the core API.
-    group: str
-    kind: str
-    namespace: str
-    name: str
-
-
-class KubernetesMoveOptions(TypedDict):
-    include_secrets: bool
-    copy_volumes: bool
-    publish_load_balancers: bool
-    namespaces: List[str]
-
-
-class KubernetesMoveSummary(TypedDict):
-    objects: int
-    refused: int
-    skipped: int
-    flagged: int
-    volumes: int
-    warnings: List[KubernetesMoveFlag]
-    addons: List[str]
-
-
-class KubernetesMove(TypedDict):
-    id: str
-    migration_id: str
-    item_key: str
-    connection_id: str
-    # The Pantech cluster the move applies to: always one of your organization's.
-    cluster_id: str
-    source_name: str
-    status: Literal[
-        "exporting",
-        "ready",
-        "previewing",
-        "applying",
-        "applied",
-        "syncing",
-        "cutting_over",
-        "completed",
-        "failed",
-        "cancelled",
-    ]
-    failure: KubernetesMoveFailure
-    options: KubernetesMoveOptions
-    summary: KubernetesMoveSummary
-    allow_privileged: List[KubernetesMoveRef]
-    previewed_at: Optional[str]
-    preview_ok: bool
-    applied_at: Optional[str]
-    completed_at: Optional[str]
-    sync_generation: int
-    created_at: str
-    updated_at: str
-
-
-class KubernetesMoveStep(TypedDict):
-    """The object's outcome in the last preview or apply; null when it has not run."""
-
-    result: Literal["created", "configured", "unchanged", "refused", "unverified"]
-    code: Optional[str]
-    message: Optional[str]
-
-
-class KubernetesMoveResource(TypedDict):
-    group: str
-    kind: str
-    namespace: str
-    name: str
-    api_version: str
-    # Apply order: definitions first, custom resources last.
-    tier: int
-    action: Literal["create", "refused", "skipped"]
-    flags: List[KubernetesMoveFlag]
-    # Refused for the cluster policy; name it in `allow_privileged` on preview to include it
-    # anyway.
-    policy_refused: bool
-    preview: KubernetesMoveStep
-    apply: KubernetesMoveStep
-
-
-class KubernetesMoveVolume(TypedDict):
-    id: str
-    namespace: str
-    claim: str
-    size_bytes: int
-    source_storage_class: str
-    target_storage_class: str
-    access_modes: List[str]
-    status: Literal["pending", "copying", "synced", "failed", "unsupported"]
-    flags: List[KubernetesMoveFlag]
-    generation: int
-    synced_generation: int
-    bytes_total: int
-    bytes_done: int
-    files_total: int
-    # The destination's own read-back matched the source's checksum.
-    checksum_verified: bool
-    synced_at: Optional[str]
-    failure: KubernetesMoveFailure
-
-
-class KubernetesMoveImage(TypedDict):
-    image: str
-    flags: List[KubernetesMoveFlag]
-
-
-class KubernetesMoveHold(TypedDict):
-    """A workload applied scaled down (or suspended) until the cutover, and what the cutover returns it to."""
-
-    group: str
-    kind: str
-    namespace: str
-    name: str
-    replicas: int
-    suspend: bool
-
-
-class KubernetesMoveDetail(KubernetesMove):
-    resources: List[KubernetesMoveResource]
-    volumes: List[KubernetesMoveVolume]
-    images: List[KubernetesMoveImage]
-    holds: List[KubernetesMoveHold]
-
-
-class KubernetesMoveSourceAccess(TypedDict):
-    # Read-only access (get, list, watch; no Secrets).
-    reader: str
-    # Adds reading Secrets.
-    secrets_reader: str
-    # Lets the agent start copy pods.
-    copier: str
-
-
-class _StartKubernetesMoveRequestRequired(TypedDict):
-    # A `kubernetes_cluster` item of the plan.
-    item_key: str
-    # A running Pantech cluster of your organization.
-    cluster_id: str
-
-
-class StartKubernetesMoveRequest(_StartKubernetesMoveRequestRequired, total=False):
-    include_secrets: bool
-    copy_volumes: bool
-    publish_load_balancers: bool
-    namespaces: List[str]
-
-
-class PreviewKubernetesMoveRequest(TypedDict, total=False):
-    allow_privileged: List[KubernetesMoveRef]
-
-
-class CutoverKubernetesMoveRequest(TypedDict):
-    source_writes_stopped: bool
-
-
-class KubernetesMoveList(TypedDict):
-    data: List[KubernetesMove]
-    # Always null: this list is returned whole.
-    next_cursor: Optional[str]
-
-
-class CloudKubernetesCluster(TypedDict):
-    """A Kubernetes cluster the scan found."""
-
-    id: str
-    name: str
-    region: str
-    # Who runs the control plane: eks, gke, aks, doks, lke or self_managed.
-    provider: str
-    version: Optional[str]
-    endpoint_public: bool
-    node_pools: List[CloudNodePool]
-    addons: List[str]
-    created_at: Optional[str]
-
-
-class CloudNodePool(TypedDict):
-    name: str
-    instance_type: Optional[str]
-    vcpu: Optional[int]
-    memory_mib: Optional[int]
-    architecture: str
-    gpu: bool
-    windows: bool
-    desired: int
-    autoscaling: bool
-    min: int
-    max: int
-
-
-class MigrationKubernetesTarget(TypedDict):
-    """What a kubernetes_cluster item becomes on Pantech; null for every other kind."""
-
-    version_id: Optional[str]
-    version: Optional[str]
-    node_pools: List[MigrationNodePool]
-    addons: List[str]
-    # The customer consented to a lower Kubernetes version than the source runs.
-    allow_downgrade: bool
-
-
-class MigrationNodePool(TypedDict):
-    name: str
-    plan_slug: Optional[str]
-    count: int
-    autoscaling: bool
-    min: int
-    max: int
-    source_name: str
-
-
-class _BucketRequired(TypedDict):
-    # The bucket's id, starting `bkt_`.
-    id: str
-    # The bucket's name, used in S3 requests.
-    name: str
-    # The region code.
-    region: str
-    # The S3 endpoint to send requests to, path-style: `<endpoint>/<name>/<key>`.
-    endpoint: str
-    # Your own limit on the bucket's stored bytes; 0 is none.
-    quota_bytes: int
-    # Whether overwritten and deleted objects keep their earlier versions.
-    versioning: bool
-    # Whether objects can be locked against deletion.
-    object_lock: bool
-    # Key prefixes anyone may read without a key, sorted.
-    public_prefixes: List[str]
-    # `provisioning` until the bucket can be used, `updating` while a change is applied.
-    state: Literal["provisioning", "active", "updating", "deleting", "failed", "unknown"]
-    # When it was created.
-    created_at: str
-
-
-class Bucket(_BucketRequired, total=False):
-    """A bucket."""
-
-    # Live stored bytes in the bucket.
-    size_bytes: int
-    # Live object count in the bucket.
-    object_count: int
-    # When deletion started; null while the bucket is active.
-    retired_at: Optional[str]
-    # When the 12-hour removal completes and the name becomes available again.
-    purge_due_at: Optional[str]
-
-
-class BucketList(TypedDict):
-    data: List[Bucket]
-
-
-class _CreateBucketRequestRequired(TypedDict):
-    # 3 to 63 lowercase letters, digits and hyphens, starting and ending with a letter or digit.
-    name: str
-
-
-class CreateBucketRequest(_CreateBucketRequestRequired, total=False):
-    # The region code. Defaults to the region object storage is offered in.
-    region: str
-    # Your own limit on stored bytes; 0 or absent is none.
-    quota_bytes: int
-    # Keep earlier versions of overwritten and deleted objects.
-    versioning: bool
-    # Allow objects to be locked against deletion.
-    object_lock: bool
-    # Key prefixes anyone may read without a key, e.g. `public/`.
-    public_prefixes: List[str]
-
-
-class _CreateObjectStorageKeyRequestRequired(TypedDict):
-    # 1 to 64 letters, digits, `-`, `_` or `.`.
-    name: str
-
-
-class CreateObjectStorageKeyRequest(_CreateObjectStorageKeyRequestRequired, total=False):
-    # The region code. Defaults to the region object storage is offered in.
-    region: str
-    # Allow only reading and listing.
-    read_only: bool
-    # Limit the key to these bucket names; absent or empty is every bucket.
-    buckets: List[str]
-
-
-class CreatedBucket(Bucket):
-    """The new bucket and the operation creating it."""
-
-    # The operation creating the bucket; it succeeds once the bucket is usable.
-    operation_id: str
-
-
-class ObjectStorageKey(TypedDict):
-    """An S3 access key, without its secret."""
-
-    # The key's id, starting `osk_`.
-    id: str
-    # The key's name.
-    name: str
-    # The region code.
-    region: str
-    # The S3 access key id S3 tools sign with.
-    access_key_id: str
-    # Whether the key may only read and list.
-    read_only: bool
-    # The bucket names the key may use; empty is every bucket.
-    buckets: List[str]
-    # When it was created.
-    created_at: str
-
-
-class CreatedObjectStorageKey(ObjectStorageKey):
-    """The new key with its secret, shown only now."""
-
-    # The secret. Store it now: it is never shown again.
-    secret_access_key: str
-    # The S3 endpoint to use the key with.
-    endpoint: str
-
-
-class ObjectStorageKeyList(TypedDict):
-    data: List[ObjectStorageKey]
-
-
-class ObjectStorageStatusLimits(TypedDict, total=False):
-    max_buckets: int
-    max_storage_bytes: int
-    max_objects: int
-
-
-class _ObjectStorageStatusRequired(TypedDict):
-    # Whether your organization may create buckets and keys.
-    enabled: bool
-    # The S3 endpoint for the default region.
-    endpoint: str
-    # Object storage is in closed beta.
-    beta: bool
-
-
-class ObjectStorageStatus(_ObjectStorageStatusRequired, total=False):
-    # Whether direct-to-bucket presigned uploads are enabled.
-    direct_upload_enabled: bool
-    limits: Optional[ObjectStorageStatusLimits]
-
-
-class UpdateBucketRequest(TypedDict, total=False):
-    """Send only what changes."""
-
-    # Your own limit on stored bytes; 0 removes it.
-    quota_bytes: int
-    # Keep earlier versions of overwritten and deleted objects.
-    versioning: bool
-    # Replaces the public prefixes; an empty list makes the bucket wholly private.
-    public_prefixes: List[str]
-
-
-class UpdatedBucket(Bucket):
-    """The bucket and the operation applying the change."""
-
-    # The operation applying the change; null when nothing changed.
-    operation_id: Optional[str]
-
-
-class _PutAddressRotationRequestRequired(TypedDict):
-    # How often the dynamic IP changes.
-    schedule: Literal["every_12_hours", "daily", "weekly", "monthly"]
-
-
-class PutAddressRotationRequest(_PutAddressRotationRequestRequired, total=False):
-    # `keep` (default): open connections keep the old address until they close.
-    connections: Literal["keep", "move"]
-    # Allow rotate now. Needs it enabled for your organization.
-    on_demand: bool
-
-
-class _AddressRotationRequired(TypedDict):
-    instance_id: str
-    schedule: Literal["every_12_hours", "daily", "weekly", "monthly"]
-    connections: Literal["keep", "move"]
-    # Whether rotate now is allowed.
-    on_demand: bool
-    # `enabling` until the first dynamic IP is ready, `active`, `degraded` (dynamic IP is on
-    # with reduced capacity, or unreachable so the instance uses its own address until it is
-    # restored; see `failure_reason`), `disabling`, `off`, or `failed` (see `failure_reason`).
-    state: Literal["enabling", "active", "degraded", "disabling", "off", "failed"]
-    # Added to the instance's hourly price while dynamic IP is on.
-    surcharge_percent: float
-    # Rotate-now changes in the last 24 hours.
-    on_demand_used: int
-    on_demand_limit: int
-    # Recent dynamic IP changes, newest first.
-    events: List[AddressRotationEvent]
-
-
-class AddressRotation(_AddressRotationRequired, total=False):
-    # The dynamic IP the instance uses now.
-    current_address: Optional[str]
-    next_rotation_at: Optional[str]
-    last_rotated_at: Optional[str]
-    # Why dynamic IP is `failed`, or why it is `degraded` while the instance uses its own
-    # address.
-    failure_reason: Optional[str]
-
-
-class _AddressRotationEventRequired(TypedDict):
-    kind: Literal["enabled", "scheduled", "on_demand", "failover", "handover", "disabled"]
-    degraded: bool
-    occurred_at: str
-
-
-class AddressRotationEvent(_AddressRotationEventRequired, total=False):
-    from_address: Optional[str]
-    to_address: Optional[str]
-
-
 class QuoteDiskOfferingResponse(TypedDict):
     disk_offering_slug: str
     size_gb: int
     currency: str
     hourly_price_minor: int
     monthly_price_minor: int
-
-
-class OpenInstanceConsoleResponse(TypedDict):
-    url: str
-
-
-class IssueVolumeKeyCredentialResponse(TypedDict):
-    instance_id: str
-    # The secret, `pvk_` followed by 43 characters.
-    credential: str
-
-
-class ListKubernetesClusterNodesResponseNodesItem(TypedDict):
-    # The node's name, which is its id inside Kubernetes.
-    id: str
-    name: str
-    role: Literal["control", "worker"]
-    status: Literal["Ready", "NotReady"]
-    # The node's internal address.
-    ip_address: str
-    vcpu: int
-    memory_mb: int
-    disk_gb: int
-    kubelet_version: str
-    created_at: Optional[str]
-
-
-class ListKubernetesClusterNodesResponse(TypedDict):
-    nodes: List[ListKubernetesClusterNodesResponseNodesItem]
-
-
-class _GetKubernetesWorkloadsResponseServicesItemPortsItemRequired(TypedDict):
-    name: str
-    protocol: str
-    port: int
-
-
-class GetKubernetesWorkloadsResponseServicesItemPortsItem(
-    _GetKubernetesWorkloadsResponseServicesItemPortsItemRequired, total=False
-):
-    # Left out when the target is a named container port.
-    target_port: int
-    node_port: int
-
-
-class GetKubernetesWorkloadsResponseServicesItem(TypedDict):
-    name: str
-    namespace: str
-    type: str
-    cluster_ip: str
-    external_ip: Optional[str]
-    ports: List[GetKubernetesWorkloadsResponseServicesItemPortsItem]
-    # The public port routed to this service; null when it is not exposed.
-    public_port: Optional[int]
-    external_url: Optional[str]
-    created_at: Optional[str]
-
-
-class GetKubernetesWorkloadsResponsePodsItem(TypedDict):
-    name: str
-    namespace: str
-    status: str
-    # Ready containers over all containers.
-    ready: str
-    restarts: int
-    node_name: str
-    pod_ip: str
-    # As kubectl's AGE column.
-    age: str
-    created_at: Optional[str]
-
-
-class GetKubernetesWorkloadsResponse(TypedDict):
-    cluster_id: str
-    # The public address exposed services and the API server are reached on; null until routing
-    # has been synced.
-    public_ip: Optional[str]
-    # The cluster's API server port on `public_ip`; null for a private endpoint or before
-    # routing is synced.
-    api_port: Optional[int]
-    services: List[GetKubernetesWorkloadsResponseServicesItem]
-    pods: List[GetKubernetesWorkloadsResponsePodsItem]
-
-
-class _ApplyKubernetesManifestBodyRequired(TypedDict):
-    manifest: str
-
-
-class ApplyKubernetesManifestBody(_ApplyKubernetesManifestBodyRequired, total=False):
-    # Where namespaced objects without one go; default `default`.
-    namespace: str
-
-
-class ApplyKubernetesManifestResponseResourcesItem(TypedDict):
-    kind: str
-    name: str
-    # Empty for a cluster-wide object.
-    namespace: str
-    status: Literal["created", "configured", "unchanged"]
-
-
-class ApplyKubernetesManifestResponse(TypedDict):
-    applied: bool
-    cluster_id: str
-    # One line per object, as kubectl prints it.
-    output: str
-    resources: List[ApplyKubernetesManifestResponseResourcesItem]
-
-
-class GetKubernetesLiveManifestsResponse(TypedDict):
-    cluster_id: str
-    # Empty when you have deployed nothing.
-    manifest: str
-    resource_count: int
-    retrieved_at: str
-
-
-class _ExposeKubernetesServiceBodyRequired(TypedDict):
-    service_name: str
-    public_port: int
-
-
-class ExposeKubernetesServiceBody(_ExposeKubernetesServiceBodyRequired, total=False):
-    # Default `default`.
-    namespace: str
-    # Leave out to keep the Service's own NodePort, or let the cluster choose one.
-    node_port: int
-    protocol: Literal["TCP", "UDP"]
-
-
-class ExposeKubernetesServiceResponse(TypedDict):
-    success: bool
-    cluster_id: str
-    service_name: str
-    namespace: str
-    public_ip: str
-    public_port: int
-    node_port: int
-    protocol: str
-    external_url: str
-    status: Literal["active"]
-
-
-class SyncKubernetesRoutingResponseSyncedPortsItem(TypedDict):
-    purpose: Literal["kubernetes-api", "service"]
-    public_port: int
-    private_port: int
-    protocol: str
-    # `control node`, or the service as namespace/name.
-    target: str
-    status: Literal["active"]
-
-
-class SyncKubernetesRoutingResponse(TypedDict):
-    success: bool
-    cluster_id: str
-    public_ip: str
-    # Null for a private endpoint.
-    api_port: Optional[int]
-    synced_ports: List[SyncKubernetesRoutingResponseSyncedPortsItem]
-    message: str
 
 
 class GetObjectStorageUsageResponseHoursItem(TypedDict):
@@ -5729,3 +5601,164 @@ class PutBucketObjectLockResponse(TypedDict):
     mode: str
     days: int
     years: int
+
+
+class OpenInstanceConsoleResponse(TypedDict):
+    url: str
+
+
+class IssueVolumeKeyCredentialResponse(TypedDict):
+    instance_id: str
+    # The secret, `pvk_` followed by 43 characters.
+    credential: str
+
+
+class ListKubernetesClusterNodesResponseNodesItem(TypedDict):
+    # The node's name, which is its id inside Kubernetes.
+    id: str
+    name: str
+    role: Literal["control", "worker"]
+    status: Literal["Ready", "NotReady"]
+    # The node's internal address.
+    ip_address: str
+    vcpu: int
+    memory_mb: int
+    disk_gb: int
+    kubelet_version: str
+    created_at: Optional[str]
+
+
+class ListKubernetesClusterNodesResponse(TypedDict):
+    nodes: List[ListKubernetesClusterNodesResponseNodesItem]
+
+
+class _GetKubernetesWorkloadsResponseServicesItemPortsItemRequired(TypedDict):
+    name: str
+    protocol: str
+    port: int
+
+
+class GetKubernetesWorkloadsResponseServicesItemPortsItem(
+    _GetKubernetesWorkloadsResponseServicesItemPortsItemRequired, total=False
+):
+    # Left out when the target is a named container port.
+    target_port: int
+    node_port: int
+
+
+class GetKubernetesWorkloadsResponseServicesItem(TypedDict):
+    name: str
+    namespace: str
+    type: str
+    cluster_ip: str
+    external_ip: Optional[str]
+    ports: List[GetKubernetesWorkloadsResponseServicesItemPortsItem]
+    # The public port routed to this service; null when it is not exposed.
+    public_port: Optional[int]
+    external_url: Optional[str]
+    created_at: Optional[str]
+
+
+class GetKubernetesWorkloadsResponsePodsItem(TypedDict):
+    name: str
+    namespace: str
+    status: str
+    # Ready containers over all containers.
+    ready: str
+    restarts: int
+    node_name: str
+    pod_ip: str
+    # As kubectl's AGE column.
+    age: str
+    created_at: Optional[str]
+
+
+class GetKubernetesWorkloadsResponse(TypedDict):
+    cluster_id: str
+    # The public address exposed services and the API server are reached on; null until routing
+    # has been synced.
+    public_ip: Optional[str]
+    # The cluster's API server port on `public_ip`; null for a private endpoint or before
+    # routing is synced.
+    api_port: Optional[int]
+    services: List[GetKubernetesWorkloadsResponseServicesItem]
+    pods: List[GetKubernetesWorkloadsResponsePodsItem]
+
+
+class _ApplyKubernetesManifestBodyRequired(TypedDict):
+    manifest: str
+
+
+class ApplyKubernetesManifestBody(_ApplyKubernetesManifestBodyRequired, total=False):
+    # Where namespaced objects without one go; default `default`.
+    namespace: str
+
+
+class ApplyKubernetesManifestResponseResourcesItem(TypedDict):
+    kind: str
+    name: str
+    # Empty for a cluster-wide object.
+    namespace: str
+    status: Literal["created", "configured", "unchanged"]
+
+
+class ApplyKubernetesManifestResponse(TypedDict):
+    applied: bool
+    cluster_id: str
+    # One line per object, as kubectl prints it.
+    output: str
+    resources: List[ApplyKubernetesManifestResponseResourcesItem]
+
+
+class GetKubernetesLiveManifestsResponse(TypedDict):
+    cluster_id: str
+    # Empty when you have deployed nothing.
+    manifest: str
+    resource_count: int
+    retrieved_at: str
+
+
+class _ExposeKubernetesServiceBodyRequired(TypedDict):
+    service_name: str
+    public_port: int
+
+
+class ExposeKubernetesServiceBody(_ExposeKubernetesServiceBodyRequired, total=False):
+    # Default `default`.
+    namespace: str
+    # Leave out to keep the Service's own NodePort, or let the cluster choose one.
+    node_port: int
+    protocol: Literal["TCP", "UDP"]
+
+
+class ExposeKubernetesServiceResponse(TypedDict):
+    success: bool
+    cluster_id: str
+    service_name: str
+    namespace: str
+    public_ip: str
+    public_port: int
+    node_port: int
+    protocol: str
+    external_url: str
+    status: Literal["active"]
+
+
+class SyncKubernetesRoutingResponseSyncedPortsItem(TypedDict):
+    purpose: Literal["kubernetes-api", "service"]
+    public_port: int
+    private_port: int
+    protocol: str
+    # `control node`, or the service as namespace/name.
+    target: str
+    status: Literal["active"]
+
+
+class SyncKubernetesRoutingResponse(TypedDict):
+    success: bool
+    cluster_id: str
+    public_ip: str
+    # Null for a private endpoint.
+    api_port: Optional[int]
+    synced_ports: List[SyncKubernetesRoutingResponseSyncedPortsItem]
+    message: str

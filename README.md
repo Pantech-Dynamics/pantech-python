@@ -9,8 +9,9 @@ instances, VPC networks, firewalls, public IPs, load balancers, volumes, snapsho
 managed databases, managed Kubernetes, SSH keys, webhooks, billing, usage, and moving from another cloud.
 
 - Sync (`Pantech`) and asyncio (`AsyncPantech`) clients with the same methods
-- Every operation in the public API, with typed keyword arguments and TypedDict results (agent
-  sessions, which answer only AI apps connected through Pantech's MCP server, are not covered yet)
+- Every operation in the public API, with typed keyword arguments and TypedDict results (not yet:
+  agent sessions, which answer only AI apps connected through Pantech's MCP server, and functions,
+  email, instance password reset and the database CA certificate, which `client.request` reaches)
 - Automatic `Idempotency-Key`s, safe retries, cursor pagination, operation and order waiting
 - Webhook signature verification
 - One dependency: `httpx`. Python 3.10+.
@@ -179,7 +180,9 @@ price comparison and a Terraform export. Nothing is created on Pantech until you
 Terraform or start a copy. `client.migrate.providers.list()` names every cloud it can read and how:
 AWS, Google Cloud, Azure and Huawei Cloud are `federated` (Pantech signs short-lived tokens your
 cloud trusts, so no keys are shared); DigitalOcean, Hetzner, Linode, Vultr, Contabo and OpenStack
-are read by the Pantech Migrate `agent`, which keeps your read-only token on your machine.
+are read by the Pantech Migrate `agent`, which keeps your read-only token on your machine. Any
+connection, federated ones included, can have one agent for the copy steps that read from inside
+your network: server copies, database imports and Kubernetes moves.
 
 ```python
 conn = client.migrate.connections.create(name="Production AWS")
@@ -223,8 +226,9 @@ print(enrollment["enroll_command"])
 client.migrate.connections.wait(hetzner["id"])  # connected once the agent has enrolled
 ```
 
-`enroll_agent` is sent once and never retried, since each call issues a new code;
-`revoke_agent(connection_id)` ends the agent at once. A plan lists the people it found as items of
+`enroll_agent` works on every connection and is sent once and never retried, since each call
+issues a new code; `revoke_agent(connection_id)` ends the agent at once, and any server copy upload
+it was running. A plan lists the people it found as items of
 kind `user`; `client.migrate.migrations.send_invites(plan_id, keys=[...])` invites them with their
 roles, and is safe to repeat.
 

@@ -969,8 +969,7 @@ class AsyncInstancesDynamicIpResource(AsyncResource):
         Args:
           instance_id: The resource's id.
           schedule: How often the dynamic IP changes.
-          connections: `keep` (default): open connections keep the old address until they
-              close.
+          connections: `keep` (default): open connections keep the old IP until they close.
           on_demand: Allow rotate now. Needs it enabled for your organization.
         """
         return cast(
@@ -1154,6 +1153,11 @@ class AsyncInstancesResource(AsyncInstanceOrderWaiter):
             ],
             NotGiven,
         ] = NOT_GIVEN,
+        plan_id: Union[str, NotGiven] = NOT_GIVEN,
+        image_id: Union[str, NotGiven] = NOT_GIVEN,
+        tag: Union[List[str], NotGiven] = NOT_GIVEN,
+        sort: Union[Literal["created_at", "name", "size", "status", "image", "cost"], NotGiven] = NOT_GIVEN,
+        order: Union[Literal["asc", "desc"], NotGiven] = NOT_GIVEN,
         extra_headers: Optional[Headers] = None,
         extra_query: Optional[Query] = None,
         timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
@@ -1170,6 +1174,11 @@ class AsyncInstancesResource(AsyncInstanceOrderWaiter):
           desired_state: Only items with this `desired_state`: `running`, `stopped` or
               `deleted`.
           observed_state: Only items with this `observed_state`.
+          plan_id: Only instances on this plan (the instance's `plan_id`).
+          image_id: Only instances from this image (the instance's `image_id`).
+          tag: `key=value`: only instances whose tag `key` is exactly `value`.
+          sort: What to order by. Ties fall back to creation time.
+          order: Direction of `sort`.
         """
         return cast(
             "InstanceList",
@@ -1183,6 +1192,11 @@ class AsyncInstancesResource(AsyncInstanceOrderWaiter):
                         "q": q,
                         "desired_state": desired_state,
                         "observed_state": observed_state,
+                        "plan_id": plan_id,
+                        "image_id": image_id,
+                        "tag": tag,
+                        "sort": sort,
+                        "order": order,
                     },
                     extra_query,
                 ),
@@ -1203,6 +1217,11 @@ class AsyncInstancesResource(AsyncInstanceOrderWaiter):
             ],
             NotGiven,
         ] = NOT_GIVEN,
+        plan_id: Union[str, NotGiven] = NOT_GIVEN,
+        image_id: Union[str, NotGiven] = NOT_GIVEN,
+        tag: Union[List[str], NotGiven] = NOT_GIVEN,
+        sort: Union[Literal["created_at", "name", "size", "status", "image", "cost"], NotGiven] = NOT_GIVEN,
+        order: Union[Literal["asc", "desc"], NotGiven] = NOT_GIVEN,
         extra_headers: Optional[Headers] = None,
         extra_query: Optional[Query] = None,
         timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
@@ -1218,11 +1237,27 @@ class AsyncInstancesResource(AsyncInstanceOrderWaiter):
           desired_state: Only items with this `desired_state`: `running`, `stopped` or
               `deleted`.
           observed_state: Only items with this `observed_state`.
+          plan_id: Only instances on this plan (the instance's `plan_id`).
+          image_id: Only instances from this image (the instance's `image_id`).
+          tag: `key=value`: only instances whose tag `key` is exactly `value`.
+          sort: What to order by. Ties fall back to creation time.
+          order: Direction of `sort`.
         """
         return self._client._paginate(
             "/instances",
             query=merge_params(
-                {"limit": limit, "q": q, "desired_state": desired_state, "observed_state": observed_state}, extra_query
+                {
+                    "limit": limit,
+                    "q": q,
+                    "desired_state": desired_state,
+                    "observed_state": observed_state,
+                    "plan_id": plan_id,
+                    "image_id": image_id,
+                    "tag": tag,
+                    "sort": sort,
+                    "order": order,
+                },
+                extra_query,
             ),
             extra_headers=extra_headers,
             timeout=timeout,
@@ -1234,8 +1269,9 @@ class AsyncInstancesResource(AsyncInstanceOrderWaiter):
         name: str,
         plan_slug: str,
         image_slug: str,
-        ssh_key_id: str,
         encrypted: Union[bool, NotGiven] = NOT_GIVEN,
+        ssh_key_id: Union[str, NotGiven] = NOT_GIVEN,
+        admin_password: Union[str, NotGiven] = NOT_GIVEN,
         region: Union[str, NotGiven] = NOT_GIVEN,
         subnet_id: Union[str, NotGiven] = NOT_GIVEN,
         network_id: Union[str, NotGiven] = NOT_GIVEN,
@@ -1264,6 +1300,11 @@ class AsyncInstancesResource(AsyncInstanceOrderWaiter):
               open).
           ssh_key_id: An SSH key from `GET /public/v1/ssh-keys`, installed for the default
               user.
+          admin_password: Required for a Windows image (`os_family: windows`), refused for
+              any other: the password you sign in with over Remote Desktop as `Administrator`.
+              12 to 72 characters of letters, digits and symbols (no spaces), mixing at least
+              three of upper case, lower case, digits and symbols, and not containing the word
+              `Administrator`.
           region: A region from `GET /public/v1/regions`, e.g. `af-abj`.
           subnet_id: Place the instance in this VPC subnet, with a private address only.
           network_id: The subnet's VPC. Optional when `subnet_id` is set; if sent, the
@@ -1274,9 +1315,9 @@ class AsyncInstancesResource(AsyncInstanceOrderWaiter):
               connects it to your organization, so agent sessions (`POST
               /public/v1/instances/{instance_id}/agent-sessions`) can start with no login to the
               instance.
-          address_rotation: Turns on dynamic IP once the instance runs: outbound traffic
-              leaves from a dynamic IP that changes on the schedule, while inbound still reaches
-              the instance's static address.
+          address_rotation: Turns on a dynamic IP once the instance runs: outbound traffic
+              leaves from the dynamic IP, which changes on the schedule, while inbound traffic
+              still reaches the instance's static IP.
         """
         return cast(
             "OrderAccepted",
@@ -1291,6 +1332,7 @@ class AsyncInstancesResource(AsyncInstanceOrderWaiter):
                         "image_slug": image_slug,
                         "encrypted": encrypted,
                         "ssh_key_id": ssh_key_id,
+                        "admin_password": admin_password,
                         "region": region,
                         "subnet_id": subnet_id,
                         "network_id": network_id,
@@ -2187,7 +2229,7 @@ class AsyncNetworksSubnetsResource(AsyncResource):
           network_id: The resource's id.
           name: 1 to 255 characters.
           cidr: An IPv4 range inside the VPC's CIDR that does not overlap its other subnets,
-              e.g. `10.0.1.0/24`.
+              such as a /24.
         """
         return cast(
             "Accepted",
@@ -2537,7 +2579,7 @@ class AsyncNetworksResource(AsyncResource):
 
         Args:
           name: 1 to 255 characters, unique among your VPC networks.
-          cidr: The VPC's private IPv4 range, e.g. `10.0.0.0/16`.
+          cidr: The VPC's private IPv4 range (RFC 1918), such as a /16.
           region: A region from `GET /public/v1/regions` that offers VPC networks.
         """
         return cast(
@@ -3026,6 +3068,8 @@ class AsyncLoadBalancersResource(AsyncResource):
         *,
         network_id: Union[str, NotGiven] = NOT_GIVEN,
         public_ip_id: Union[str, NotGiven] = NOT_GIVEN,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        cursor: Union[str, NotGiven] = NOT_GIVEN,
         extra_headers: Optional[Headers] = None,
         extra_query: Optional[Query] = None,
         timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
@@ -3037,13 +3081,18 @@ class AsyncLoadBalancersResource(AsyncResource):
         Args:
           network_id: Only load balancers in this private network (`net_…`).
           public_ip_id: Only load balancers on this public IP (`pip_…`).
+          limit: Items per page, 1 to 100.
+          cursor: The previous page's `next_cursor`, to get the next page.
         """
         return cast(
             "LoadBalancerList",
             await self._client.request(
                 "GET",
                 "/load-balancers",
-                query=merge_params({"network_id": network_id, "public_ip_id": public_ip_id}, extra_query),
+                query=merge_params(
+                    {"network_id": network_id, "public_ip_id": public_ip_id, "limit": limit, "cursor": cursor},
+                    extra_query,
+                ),
                 extra_headers=extra_headers,
                 timeout=timeout,
             ),
@@ -3054,6 +3103,7 @@ class AsyncLoadBalancersResource(AsyncResource):
         *,
         network_id: Union[str, NotGiven] = NOT_GIVEN,
         public_ip_id: Union[str, NotGiven] = NOT_GIVEN,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
         extra_headers: Optional[Headers] = None,
         extra_query: Optional[Query] = None,
         timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
@@ -3065,10 +3115,11 @@ class AsyncLoadBalancersResource(AsyncResource):
         Args:
           network_id: Only load balancers in this private network (`net_…`).
           public_ip_id: Only load balancers on this public IP (`pip_…`).
+          limit: Items per page, 1 to 100.
         """
         return self._client._paginate(
             "/load-balancers",
-            query=merge_params({"network_id": network_id, "public_ip_id": public_ip_id}, extra_query),
+            query=merge_params({"network_id": network_id, "public_ip_id": public_ip_id, "limit": limit}, extra_query),
             extra_headers=extra_headers,
             timeout=timeout,
         )
@@ -3572,8 +3623,8 @@ class AsyncVolumesResource(AsyncResource):
           region: A region from `GET /public/v1/regions`.
           instance_id: Attach the new volume at once to this running instance in the same
               zone.
-          mount_point: With `instance_id`: an absolute path to mount the volume at, e.g.
-              `/data`.
+          mount_point: Optional note of where you plan to mount the volume, an absolute path
+              such as `/data`.
           encrypted: Optional. `true` asks for an **encrypted data volume**.
         """
         return cast(
@@ -3971,6 +4022,7 @@ class AsyncSnapshotsResource(AsyncResource):
         observed_state: Union[
             Literal["pending", "provisioning", "active", "deleting", "deleted", "failed", "unknown"], NotGiven
         ] = NOT_GIVEN,
+        kind: Union[Literal["instance", "volume", "database"], NotGiven] = NOT_GIVEN,
         extra_headers: Optional[Headers] = None,
         extra_query: Optional[Query] = None,
         timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
@@ -3986,6 +4038,9 @@ class AsyncSnapshotsResource(AsyncResource):
               characters.
           desired_state: Only items with this `desired_state`: `present` or `deleted`.
           observed_state: Only items with this `observed_state`.
+          kind: Only snapshots of this kind: `instance` (taken of an instance, `instance_id`
+              set), `volume` (taken of a standalone volume, `volume_id` set) or `database`
+              (taken of a database's data disk, `database_id` set).
         """
         return cast(
             "SnapshotList",
@@ -3999,6 +4054,7 @@ class AsyncSnapshotsResource(AsyncResource):
                         "q": q,
                         "desired_state": desired_state,
                         "observed_state": observed_state,
+                        "kind": kind,
                     },
                     extra_query,
                 ),
@@ -4016,6 +4072,7 @@ class AsyncSnapshotsResource(AsyncResource):
         observed_state: Union[
             Literal["pending", "provisioning", "active", "deleting", "deleted", "failed", "unknown"], NotGiven
         ] = NOT_GIVEN,
+        kind: Union[Literal["instance", "volume", "database"], NotGiven] = NOT_GIVEN,
         extra_headers: Optional[Headers] = None,
         extra_query: Optional[Query] = None,
         timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
@@ -4030,11 +4087,21 @@ class AsyncSnapshotsResource(AsyncResource):
               characters.
           desired_state: Only items with this `desired_state`: `present` or `deleted`.
           observed_state: Only items with this `observed_state`.
+          kind: Only snapshots of this kind: `instance` (taken of an instance, `instance_id`
+              set), `volume` (taken of a standalone volume, `volume_id` set) or `database`
+              (taken of a database's data disk, `database_id` set).
         """
         return self._client._paginate(
             "/snapshots",
             query=merge_params(
-                {"limit": limit, "q": q, "desired_state": desired_state, "observed_state": observed_state}, extra_query
+                {
+                    "limit": limit,
+                    "q": q,
+                    "desired_state": desired_state,
+                    "observed_state": observed_state,
+                    "kind": kind,
+                },
+                extra_query,
             ),
             extra_headers=extra_headers,
             timeout=timeout,
@@ -4551,6 +4618,7 @@ class AsyncDatabasesResource(AsyncDatabaseOrderWaiter):
         admin_username: Union[str, NotGiven] = NOT_GIVEN,
         password: Union[str, NotGiven] = NOT_GIVEN,
         storage_gb: Union[int, NotGiven] = NOT_GIVEN,
+        source_snapshot_id: Union[str, NotGiven] = NOT_GIVEN,
         idempotency_key: Optional[str] = None,
         extra_headers: Optional[Headers] = None,
         extra_query: Optional[Query] = None,
@@ -4579,6 +4647,8 @@ class AsyncDatabasesResource(AsyncDatabaseOrderWaiter):
           password: Optional admin password: 16 to 128 printable ASCII characters, with no
               spaces, single quotes (`'`), double quotes (`"`) or backslashes (`\\`).
           storage_gb: Data disk size in GB.
+          source_snapshot_id: Start the new database from this snapshot of one of your
+              databases, instead of empty.
         """
         return cast(
             "DatabaseOrderAccepted",
@@ -4598,6 +4668,7 @@ class AsyncDatabasesResource(AsyncDatabaseOrderWaiter):
                         "admin_username": admin_username,
                         "password": password,
                         "storage_gb": storage_gb,
+                        "source_snapshot_id": source_snapshot_id,
                     },
                     extra_body,
                 ),
@@ -5834,6 +5905,8 @@ class AsyncSshKeysResource(AsyncResource):
     async def list(
         self,
         *,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        cursor: Union[str, NotGiven] = NOT_GIVEN,
         extra_headers: Optional[Headers] = None,
         extra_query: Optional[Query] = None,
         timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
@@ -5841,13 +5914,17 @@ class AsyncSshKeysResource(AsyncResource):
         """List SSH keys.
 
         ``GET /ssh-keys``
+
+        Args:
+          limit: Keys per page, 1 to 100.
+          cursor: The previous page's `next_cursor`, to get the next page.
         """
         return cast(
             "SSHKeyList",
             await self._client.request(
                 "GET",
                 "/ssh-keys",
-                query=merge_params({}, extra_query),
+                query=merge_params({"limit": limit, "cursor": cursor}, extra_query),
                 extra_headers=extra_headers,
                 timeout=timeout,
             ),
@@ -5856,6 +5933,7 @@ class AsyncSshKeysResource(AsyncResource):
     def list_all(
         self,
         *,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
         extra_headers: Optional[Headers] = None,
         extra_query: Optional[Query] = None,
         timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
@@ -5863,9 +5941,12 @@ class AsyncSshKeysResource(AsyncResource):
         """List SSH keys, following ``next_cursor`` through every page.
 
         ``GET /ssh-keys``
+
+        Args:
+          limit: Keys per page, 1 to 100.
         """
         return self._client._paginate(
-            "/ssh-keys", query=merge_params({}, extra_query), extra_headers=extra_headers, timeout=timeout
+            "/ssh-keys", query=merge_params({"limit": limit}, extra_query), extra_headers=extra_headers, timeout=timeout
         )
 
     async def create(
@@ -10231,6 +10312,8 @@ class AsyncDomainsOrdersResource(AsyncResource):
         self,
         domain_id: str,
         *,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        cursor: Union[str, NotGiven] = NOT_GIVEN,
         extra_headers: Optional[Headers] = None,
         extra_query: Optional[Query] = None,
         timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
@@ -10241,13 +10324,15 @@ class AsyncDomainsOrdersResource(AsyncResource):
 
         Args:
           domain_id: The domain's id (`dom_…`).
+          limit: Items per page, 1 to 100.
+          cursor: The previous page's `next_cursor`, to get the next page.
         """
         return cast(
             "DomainOrderList",
             await self._client.request(
                 "GET",
                 f"/domains/{path_param(domain_id)}/orders",
-                query=merge_params({}, extra_query),
+                query=merge_params({"limit": limit, "cursor": cursor}, extra_query),
                 extra_headers=extra_headers,
                 timeout=timeout,
             ),
@@ -10257,6 +10342,7 @@ class AsyncDomainsOrdersResource(AsyncResource):
         self,
         domain_id: str,
         *,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
         extra_headers: Optional[Headers] = None,
         extra_query: Optional[Query] = None,
         timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
@@ -10267,10 +10353,11 @@ class AsyncDomainsOrdersResource(AsyncResource):
 
         Args:
           domain_id: The domain's id (`dom_…`).
+          limit: Items per page, 1 to 100.
         """
         return self._client._paginate(
             f"/domains/{path_param(domain_id)}/orders",
-            query=merge_params({}, extra_query),
+            query=merge_params({"limit": limit}, extra_query),
             extra_headers=extra_headers,
             timeout=timeout,
         )
@@ -10380,6 +10467,7 @@ class AsyncDomainsResource(AsyncDomainOrderWaiter):
         self,
         *,
         query: str,
+        exact: Union[Literal["true", "false"], NotGiven] = NOT_GIVEN,
         extra_headers: Optional[Headers] = None,
         extra_query: Optional[Query] = None,
         timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
@@ -10391,13 +10479,15 @@ class AsyncDomainsResource(AsyncDomainOrderWaiter):
         Args:
           query: A name such as `example` or `example.com`; an internationalised name is
               accepted.
+          exact: `true`: check only `query`, which must end in a TLD Pantech sells, asking
+              its registry now (a "try again" on one `unknown` result).
         """
         return cast(
             "DomainSearchResultList",
             await self._client.request(
                 "GET",
                 "/domains/search",
-                query=merge_params({"query": query}, extra_query),
+                query=merge_params({"query": query, "exact": exact}, extra_query),
                 extra_headers=extra_headers,
                 timeout=timeout,
             ),
@@ -10407,6 +10497,7 @@ class AsyncDomainsResource(AsyncDomainOrderWaiter):
         self,
         *,
         query: str,
+        exact: Union[Literal["true", "false"], NotGiven] = NOT_GIVEN,
         extra_headers: Optional[Headers] = None,
         extra_query: Optional[Query] = None,
         timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
@@ -10418,10 +10509,12 @@ class AsyncDomainsResource(AsyncDomainOrderWaiter):
         Args:
           query: A name such as `example` or `example.com`; an internationalised name is
               accepted.
+          exact: `true`: check only `query`, which must end in a TLD Pantech sells, asking
+              its registry now (a "try again" on one `unknown` result).
         """
         return self._client._paginate(
             "/domains/search",
-            query=merge_params({"query": query}, extra_query),
+            query=merge_params({"query": query, "exact": exact}, extra_query),
             extra_headers=extra_headers,
             timeout=timeout,
         )
