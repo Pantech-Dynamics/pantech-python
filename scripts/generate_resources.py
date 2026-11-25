@@ -247,7 +247,7 @@ class Renderer:
             return op.returns
         if op.returns == "octet-stream":
             return "bytes"
-        if op.returns == "text":
+        if op.returns in ("text", "yaml"):
             return "str"
         return self.note(op.returns)
 
@@ -336,7 +336,7 @@ class Renderer:
         else:
             call.append("    extra_headers=extra_headers,")
         call.append("    timeout=timeout,")
-        if op.returns in ("bytes", "octet-stream", "text"):
+        if op.returns in ("bytes", "octet-stream", "text", "yaml"):
             call.append(f'    parse_as="{op.returns}",')
         call.append(")")
         if op.returns == "None":

@@ -243,8 +243,8 @@ class TypeRegistry:
         td = TypedDictDef(name=name, bases=bases, fields=[], doc=first_sentence(schema.get("description")))
         self.defs[name] = td  # registered before fields, so recursive schemas terminate
         for prop, sub in props.items():
-            if not prop.isidentifier() or keyword.iskeyword(prop):
-                raise SystemExit(f"{name}.{prop}: not a Python identifier; add functional TypedDict support")
+            if not prop.isidentifier():
+                raise SystemExit(f"{name}.{prop}: not a Python identifier")
             ptype = self.py_type(sub, name + pascal(prop))
             doc = first_sentence(sub.get("description") if isinstance(sub, dict) else None)
             td.fields.append((prop, ptype, prop in required, doc))
@@ -283,6 +283,8 @@ class TypeRegistry:
         opt = [f for f in td.fields if not f[2]]
         bases = td.bases or ["TypedDict"]
         lines: List[str] = ["", ""]
+        if any(keyword.iskeyword(f[0]) for f in td.fields):
+            return lines + self._functional(td, req, opt)
         if req and opt:
             base_name = f"_{td.name}Required"
             lines += self._class(base_name, bases, "", req, total=True)
@@ -308,6 +310,41 @@ class TypeRegistry:
             lines.append(f"    {fname}: {ftype}")
         if not doc and not fields:
             lines.append("    pass")
+        return lines
+
+    def _functional(
+        self, td: TypedDictDef, req: List[Tuple[str, str, bool, str]], opt: List[Tuple[str, str, bool, str]]
+    ) -> List[str]:
+        """A TypedDict with a field named like a Python keyword (such as ``pass``).
+
+        The class syntax cannot declare one, so the named class inherits its
+        required and its optional fields from two private TypedDicts, and the
+        one holding that field uses the functional syntax.
+        """
+        lines: List[str] = []
+        parents = list(td.bases)
+        for suffix, fields, total in (("Required", req, True), ("Optional", opt, False)):
+            if not fields:
+                continue
+            part = f"_{td.name}{suffix}"
+            parents.append(part)
+            if not any(keyword.iskeyword(f[0]) for f in fields):
+                lines += self._class(part, ["TypedDict"], "", fields, total=total)
+                lines += ["", ""]
+                continue
+            lines.append(f"{part} = TypedDict(")
+            lines.append(f'    "{part}",')
+            lines.append("    {")
+            for fname, ftype, _req, fdoc in fields:
+                lines += comment_lines(fdoc, "        ")
+                lines.append(f'        "{fname}": {ftype},')
+            lines.append("    },")
+            if not total:
+                lines.append("    total=False,")
+            lines.append(")")
+            lines += ["", ""]
+        lines.append(f"class {td.name}({', '.join(parents)}):")
+        lines.append(f'    """{docstring_text(td.doc)}"""' if td.doc else "    pass")
         return lines
 
 
@@ -336,7 +373,7 @@ class OperationSpec:
     has_body: bool
     binary_body: bool  # True when requestBody is application/octet-stream
     body_extra_allowed: bool
-    returns: str  # a type expression, "None", "bytes", "octet-stream", "text" or "stream"
+    returns: str  # a type expression, "None", "bytes", "octet-stream", "text", "yaml" or "stream"
     page_item: Optional[str]  # the item type when the response is a cursor page
 
 
@@ -441,6 +478,8 @@ def _response_type(reg: TypeRegistry, op: Dict[str, Any], ctx: str) -> Tuple[str
         if "application/json" not in content:
             if any(ct.startswith("text/") for ct in content):
                 return "text", None
+            if "application/yaml" in content:
+                return "yaml", None
             if "application/octet-stream" in content:
                 return "octet-stream", None
             return "bytes", None

@@ -67,13 +67,14 @@ MAX_RETRY_AFTER = 60.0
 RETRYABLE_STATUSES = frozenset({429, 500, 502, 503, 504})
 WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
-ParseAs = str  # "json" (default), "bytes", "octet-stream", "text"
+ParseAs = str  # "json" (default), "bytes", "octet-stream", "text", "yaml"
 
 # What each way of reading a response asks the API for.
 _ACCEPT = {
     "bytes": "application/pdf",
     "octet-stream": "application/octet-stream",
     "text": "text/dns, text/plain;q=0.9",
+    "yaml": "application/yaml",
 }
 
 
@@ -208,7 +209,7 @@ class BaseClient:
     def _parse(response: httpx.Response, parse_as: ParseAs) -> Any:
         if parse_as in ("bytes", "octet-stream"):
             return response.content
-        if parse_as == "text":
+        if parse_as in ("text", "yaml"):
             return response.text
         if response.status_code == 204 or not response.content:
             return None
