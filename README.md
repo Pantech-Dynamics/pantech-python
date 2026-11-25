@@ -174,9 +174,12 @@ Bucket configuration (`get_cors`/`set_cors`, `get_lifecycle`/`set_lifecycle`, `g
 
 ### Move from another cloud
 
-`client.migrate` connects an AWS account through a read-only role that only Pantech can assume (no
-access keys are shared), scans what runs there, and plans the move with a price comparison and a
-Terraform export. Nothing is created on Pantech until you apply the Terraform.
+`client.migrate` connects another cloud read-only, scans what runs there, and plans the move with a
+price comparison and a Terraform export. Nothing is created on Pantech until you apply the
+Terraform or start a copy. `client.migrate.providers.list()` names every cloud it can read and how:
+AWS, Google Cloud, Azure and Huawei Cloud are `federated` (Pantech signs short-lived tokens your
+cloud trusts, so no keys are shared); DigitalOcean, Hetzner, Linode, Vultr, Contabo and OpenStack
+are read by the Pantech Migrate `agent`, which keeps your read-only token on your machine.
 
 ```python
 conn = client.migrate.connections.create(name="Production AWS")
@@ -196,6 +199,69 @@ for f in client.migrate.migrations.export_terraform(plan["id"])["files"]:
 `client.migrate.migrations.update_item(plan_id, key=..., excluded=True)` leaves an item out, or
 changes its plan, size, address range or role, before you export. See
 `examples/migrate_from_aws.py`.
+
+Other clouds connect the same way. For Google Cloud, Azure and Huawei Cloud, run the script in
+`conn["setup"]["template"]` and send what it prints with `update`; for an agent provider, enroll
+the agent where it will run:
+
+```python
+gcp = client.migrate.connections.create(provider="gcp", name="Production GCP")
+client.migrate.connections.update(
+    gcp["id"],
+    gcp={
+        "project_number": "...",
+        "pool_id": "...",
+        "provider_id": "...",
+        "service_account_email": "...",
+        "project_ids": ["..."],
+    },
+)
+
+hetzner = client.migrate.connections.create(provider="hetzner", name="Hetzner")
+enrollment = client.migrate.connections.enroll_agent(hetzner["id"])  # shown once
+print(enrollment["enroll_command"])
+client.migrate.connections.wait(hetzner["id"])  # connected once the agent has enrolled
+```
+
+`enroll_agent` is sent once and never retried, since each call issues a new code;
+`revoke_agent(connection_id)` ends the agent at once. A plan lists the people it found as items of
+kind `user`; `client.migrate.migrations.send_invites(plan_id, keys=[...])` invites them with their
+roles, and is safe to repeat.
+
+Then move the data across. Each copy is free; what it creates bills as usual.
+
+```python
+# Buckets: choose them, deploy the copy role, then import.
+client.migrate.copy_access.set(conn["id"], buckets=["assets"])  # returns the copy role template
+client.migrate.copy_access.set(conn["id"], role_arn="arn:aws:iam::...:role/...")  # CopyRoleArn output
+imp = client.migrate.bucket_imports.start(
+    connection_id=conn["id"], source_bucket="assets", destination_bucket_name="assets"
+)
+client.migrate.bucket_imports.resync(imp["id"])  # copies only what changed
+
+# Servers: copy the disks, copy what changed, then cut over to a new instance.
+copy = client.migrate.server_copies.start(plan["id"], item_key="...", subnet_id="...")
+client.migrate.server_copies.sync(copy["id"])
+client.migrate.server_copies.cut_over(copy["id"])  # stop the application first
+
+# Databases, through the Migrate agent: the source's credentials stay on it.
+dbi = client.migrate.database_imports.start(
+    plan["id"], item_key="...", destination_database_id="...", source_ref="prod-db", mode="replicate"
+)
+client.migrate.database_imports.cut_over(dbi["id"])  # stop writes to the source first
+
+# Kubernetes: preview, apply, then cut over.
+move = client.migrate.kubernetes_moves.start(plan["id"], item_key="...", cluster_id="...")
+client.migrate.kubernetes_moves.preview(move["id"])
+client.migrate.kubernetes_moves.apply(move["id"])
+client.migrate.kubernetes_moves.cut_over(move["id"], source_writes_stopped=True)
+manifests = client.migrate.kubernetes_moves.download_manifests(move["id"])  # YAML text, for GitOps
+```
+
+Each step is asynchronous: follow it with `get` (`bucket_imports.get`, `server_copies.get`,
+`database_imports.get`, `kubernetes_moves.get`) until its `status` says it is ready for the next.
+Windows servers are copied with the agent only, once Windows is enabled for your organization.
+Every method is also on `AsyncPantech`.
 
 ### Certificates
 
