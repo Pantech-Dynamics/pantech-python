@@ -6,6 +6,20 @@ All notable changes to the `pantech` package. The newest version heading
 
 ## Unreleased
 
+## 0.7.0 (2026-11-28)
+
+FEATURES:
+
+- Object storage parity (`client.object_storage` and `client.buckets`), sync and async:
+  - Organization settings: `object_storage.update_settings(block_public_access=...)` (`PATCH /object-storage/settings`) and `block_public_access` on `object_storage.get_status()`.
+  - Scoped S3 access keys: `permissions` (`read_only`, `read_write`, `write_only`), `prefixes`, and `expires_at` on `object_storage.keys.create` and `ObjectStorageKey`.
+  - Bucket default server-side encryption: `encryption` (`none` or `sse_s3`) on `buckets.create`, `buckets.update`, and `Bucket`, plus `server_side_encryption` on object metadata.
+  - Browser POST upload forms and version recovery: `buckets.objects.create_upload_form(...)` and `buckets.objects.restore_version(...)`.
+  - Multipart management: `buckets.multipart.list(bucket_id)` and batch part signing via `buckets.multipart.sign_parts(...)`.
+  - Cross-organization bucket sharing: `buckets.list_shared()` / `buckets.list_all_shared()`, and `buckets.shares` (`list`, `list_all`, `create`, `revoke`).
+  - Bucket event notifications: `buckets.notifications` (`list`, `list_all`, `create`, `update`, `delete`) targeting webhooks or functions.
+  - Bucket custom domains and static websites: `buckets.domains` (`list`, `list_all`, `create`, `update`, `delete`).
+
 ## 0.6.1 (2026-11-25)
 
 - The vendored spec is the one now published, and the `openapi/pending` files it covers are gone;

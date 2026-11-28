@@ -305,7 +305,7 @@ def _apply_pending(spec: Dict[str, Any]) -> None:
     # to both /buckets/{bucket_id}/object-lock and /buckets/{bucket_id}/objects/lock.
     obj_lock = spec["paths"].get(PREFIX + "/buckets/{bucket_id}/objects/lock", {}).get("put")
     if isinstance(obj_lock, dict) and obj_lock.get("operationId") == "putBucketObjectLock":
-        obj_lock["operationId"] = "setBucketObjectLock"
+        obj_lock["operationId"] = "putObjectLock"
 
 
 def load_spec() -> Dict[str, Any]:

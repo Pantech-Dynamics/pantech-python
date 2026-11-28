@@ -106,10 +106,19 @@ FAMILY_DOCS = {
     "dns.records": "Record sets of a zone: one name and type each, with a TTL and values.",
     "domains": "Domains: search, register, transfer in, renew, and manage name servers, contact and lock.",
     "domains.orders": "Registrations, renewals and transfers, paid from your credit.",
-    "object_storage": "S3-compatible object storage: availability, usage, and access keys.",
+    "object_storage": "S3-compatible object storage: availability, usage, settings, and access keys.",
     "object_storage.keys": "S3 access keys for tools and SDKs.",
-    "buckets": "Object storage buckets: lifecycle, CORS, tags, object lock, and stats.",
-    "buckets.objects": "Bucket objects: list, upload, download, presign, copy, delete, tags, lock, and visibility.",
+    "buckets": (
+        "Object storage buckets: encryption, lifecycle, CORS, tags, object lock, shares, notifications, "
+        "domains, and stats."
+    ),
+    "buckets.shares": "Cross-organization shares on a bucket.",
+    "buckets.notifications": "Object event notification rules on a bucket.",
+    "buckets.domains": "Custom domains and static website settings on a bucket.",
+    "buckets.objects": (
+        "Bucket objects: list, upload, download, presign, upload forms, copy, delete, tags, lock, "
+        "visibility, and version restore."
+    ),
     "buckets.multipart": "Multipart uploads for large objects.",
     "operations": "Follow asynchronous changes.",
 }
