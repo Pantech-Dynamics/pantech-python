@@ -77,9 +77,14 @@ __all__ = [
     "CopyAccessSetup",
     "CopyBucketObjectBody",
     "CopyBucketObjectResponse",
+    "CreateBucketDomainBody",
     "CreateBucketFolderBody",
     "CreateBucketFolderResponse",
+    "CreateBucketNotificationBody",
     "CreateBucketRequest",
+    "CreateBucketShareBody",
+    "CreateBucketUploadFormBody",
+    "CreateBucketUploadFormResponse",
     "CreateCloudConnectionRequest",
     "CreateCreditPurchaseRequest",
     "CreateDNSRecordRequest",
@@ -245,8 +250,14 @@ __all__ = [
     "KubernetesNodePoolTaint",
     "KubernetesVersion",
     "KubernetesVersionList",
+    "ListBucketDomainsResponse",
+    "ListBucketMultipartUploadsResponse",
+    "ListBucketMultipartUploadsResponseUploadsItem",
+    "ListBucketNotificationsResponse",
+    "ListBucketSharesResponse",
     "ListKubernetesClusterNodesResponse",
     "ListKubernetesClusterNodesResponseNodesItem",
+    "ListSharedBucketsResponse",
     "LoadBalancer",
     "LoadBalancerList",
     "LoadBalancerMember",
@@ -277,6 +288,7 @@ __all__ = [
     "NetworkList",
     "ObjectStorageKey",
     "ObjectStorageKeyList",
+    "ObjectStorageSettings",
     "ObjectStorageStatus",
     "ObjectStorageStatusLimits",
     "OpenInstanceConsoleResponse",
@@ -325,6 +337,8 @@ __all__ = [
     "PutBucketTagsBodyTagsItem",
     "PutBucketTagsResponse",
     "PutBucketTagsResponseTagsItem",
+    "PutObjectLockBody",
+    "PutObjectLockResponse",
     "PutSnapshotScheduleRequest",
     "QuoteDiskOfferingResponse",
     "RebuildRequest",
@@ -356,6 +370,8 @@ __all__ = [
     "ResizeKubernetesClusterPlanRequest",
     "ResizeRequest",
     "ResizeVolumeRequest",
+    "RestoreBucketObjectVersionBody",
+    "RestoreBucketObjectVersionResponse",
     "RestoreRequest",
     "RestoreSnapshotRequest",
     "ResyncBucketImportRequest",
@@ -379,13 +395,14 @@ __all__ = [
     "ServerCopyPass",
     "ServerCopyProgress",
     "ServerCopyTemplate",
-    "SetBucketObjectLockBody",
-    "SetBucketObjectLockResponse",
     "SetDatabaseSecurityGroupsRequest",
     "SetDomainNameServersRequest",
     "SetRegistryNamespaceRequest",
     "SignBucketMultipartPartBody",
     "SignBucketMultipartPartResponse",
+    "SignBucketMultipartPartsBody",
+    "SignBucketMultipartPartsResponse",
+    "SignBucketMultipartPartsResponsePartsItem",
     "Snapshot",
     "SnapshotList",
     "SnapshotSchedule",
@@ -403,6 +420,8 @@ __all__ = [
     "TLDOfferList",
     "ToggleKubernetesAddonRequest",
     "TransferDomainRequest",
+    "UpdateBucketDomainBody",
+    "UpdateBucketNotificationBody",
     "UpdateBucketRequest",
     "UpdateCertificateRequest",
     "UpdateCloudConnectionRequest",
@@ -415,6 +434,7 @@ __all__ = [
     "UpdateKubernetesClusterRequest",
     "UpdateLoadBalancerRequest",
     "UpdateMigrationItemRequest",
+    "UpdateObjectStorageSettingsRequest",
     "UpdateRegistryRepositoryRequest",
     "UpdateWebhookRequest",
     "UpdatedBucket",
@@ -1114,6 +1134,8 @@ class Bucket(_BucketRequired, total=False):
     size_bytes: int
     # Live object count in the bucket.
     object_count: int
+    # Default server-side encryption applied to new objects (`none` or `sse_s3`).
+    encryption: Literal["none", "sse_s3"]
     # When deletion started; null while the bucket is active.
     retired_at: Optional[str]
     # When the 12-hour removal completes and the name becomes available again.
@@ -1152,6 +1174,8 @@ class CreateBucketRequest(_CreateBucketRequestRequired, total=False):
     versioning: bool
     # Allow objects to be locked against deletion.
     object_lock: bool
+    # Optional default server-side encryption for new objects (`none` or `sse_s3`).
+    encryption: Literal["none", "sse_s3"]
     # Key prefixes anyone may read without a key, e.g. `public/`.
     public_prefixes: List[str]
 
@@ -1163,6 +1187,8 @@ class UpdateBucketRequest(TypedDict, total=False):
     quota_bytes: int
     # Keep earlier versions of overwritten and deleted objects.
     versioning: bool
+    # Default server-side encryption for newly written objects (`none` or `sse_s3`).
+    encryption: Literal["none", "sse_s3"]
     # Replaces the public prefixes; an empty list makes the bucket wholly private.
     public_prefixes: List[str]
 
@@ -1185,6 +1211,9 @@ class _ObjectStorageStatusRequired(TypedDict):
 class ObjectStorageStatus(_ObjectStorageStatusRequired, total=False):
     # Whether direct-to-bucket presigned uploads are enabled.
     direct_upload_enabled: bool
+    # Whether Block All Public Access is on: nothing in the organization's buckets can be made
+    # public, and public prefixes and public objects stop being served anonymously.
+    block_public_access: Optional[bool]
     limits: Optional[ObjectStorageStatusLimits]
 
 
@@ -1201,10 +1230,28 @@ class ObjectStorageKey(TypedDict):
     access_key_id: str
     # Whether the key may only read and list.
     read_only: bool
+    # What the key may do: `read_write`, `read_only` (read and list), or `write_only` (upload
+    # only; it cannot read, list or delete).
+    permissions: Literal["read_write", "read_only", "write_only"]
     # The bucket names the key may use; empty is every bucket.
     buckets: List[str]
+    # The object key prefixes the key may use, such as `uploads/`; empty is every object.
+    prefixes: List[str]
     # When it was created.
     created_at: str
+    # When the key stops working; null is never.
+    expires_at: Optional[str]
+
+
+class ObjectStorageSettings(TypedDict):
+    # Whether Block All Public Access is on.
+    block_public_access: bool
+
+
+class UpdateObjectStorageSettingsRequest(TypedDict):
+    # True blocks all public access: public prefixes and public objects stop being served
+    # anonymously, and nothing can be made public until it is turned off.
+    block_public_access: bool
 
 
 class ObjectStorageKeyList(TypedDict):
@@ -1230,8 +1277,15 @@ class CreateObjectStorageKeyRequest(_CreateObjectStorageKeyRequestRequired, tota
     region: str
     # Allow only reading and listing.
     read_only: bool
+    # What the key may do.
+    permissions: Literal["read_only", "read_write", "write_only"]
     # Limit the key to these bucket names; absent or empty is every bucket.
     buckets: List[str]
+    # Limit the key to object keys under these prefixes, such as `uploads/`; absent or empty is
+    # every object.
+    prefixes: List[str]
+    # When the key stops working, RFC 3339, in the future and at most 10 years ahead.
+    expires_at: str
 
 
 class UpdateLoadBalancerRequest(TypedDict, total=False):
@@ -3406,7 +3460,7 @@ class CloudConnectionSetup(TypedDict):
 
 
 class CloudAgentSetup(TypedDict):
-    """How to run the Pantech Migrate agent; null for federated providers."""
+    """How to run the connection's Pantech Migrate agent."""
 
     # The agent's container image.
     image: str
@@ -3476,8 +3530,8 @@ class CloudConnection(TypedDict):
     ]
     name: str
     # `awaiting_role` (federated providers: waiting for what the setup printed),
-    # `awaiting_agent` (agent providers: no agent enrolled), `verifying`, `connected` or
-    # `failed`.
+    # `awaiting_agent` (other clouds: no agent enrolled; on AWS, Google Cloud, Azure and Huawei
+    # Cloud an agent never changes the status), `verifying`, `connected` or `failed`.
     status: Literal["awaiting_role", "awaiting_agent", "verifying", "connected", "failed"]
     failure: CloudFailure
     role_arn: Optional[str]
@@ -5233,7 +5287,7 @@ class GetBucketObjectMetaResponseTagsItem(TypedDict):
     value: str
 
 
-class GetBucketObjectMetaResponse(TypedDict):
+class _GetBucketObjectMetaResponseRequired(TypedDict):
     key: str
     size_bytes: int
     etag: str
@@ -5252,6 +5306,10 @@ class GetBucketObjectMetaResponse(TypedDict):
     object_public: bool
     public_source: Literal["private", "object", "bucket_prefix"]
     public_url: str
+
+
+class GetBucketObjectMetaResponse(_GetBucketObjectMetaResponseRequired, total=False):
+    server_side_encryption: str
 
 
 class _PresignBucketObjectDownloadBodyRequired(TypedDict):
@@ -5295,6 +5353,30 @@ class PresignBucketObjectUploadResponse(TypedDict):
     direct: bool
     url: str
     expires_in_seconds: int
+
+
+class CreateBucketUploadFormBody(TypedDict, total=False):
+    # The one key the form may write.
+    key: str
+    # The form may write any key starting with this, ending in the browser's file name.
+    key_prefix: str
+    # The smallest file accepted.
+    min_bytes: int
+    # The largest file accepted, at most 5 GiB.
+    max_bytes: int
+    # When set, the only content type the form may send.
+    content_type: str
+    # How long the form works: 60 seconds to 7 days.
+    expires_in_seconds: int
+
+
+class CreateBucketUploadFormResponse(TypedDict):
+    # Where to POST the form.
+    url: str
+    # Form fields to send before the file, as given.
+    fields: Dict[str, str]
+    expires_at: str
+    bucket_name: str
 
 
 class CreateBucketFolderBody(TypedDict):
@@ -5378,11 +5460,11 @@ class PutBucketObjectTagsResponse(TypedDict):
     tags: List[PutBucketObjectTagsResponseTagsItem]
 
 
-class _SetBucketObjectLockBodyRequired(TypedDict):
+class _PutObjectLockBodyRequired(TypedDict):
     key: str
 
 
-class SetBucketObjectLockBody(_SetBucketObjectLockBodyRequired, total=False):
+class PutObjectLockBody(_PutObjectLockBodyRequired, total=False):
     version_id: str
     retention_mode: Literal["GOVERNANCE", "COMPLIANCE"]
     retain_until: str
@@ -5390,7 +5472,7 @@ class SetBucketObjectLockBody(_SetBucketObjectLockBodyRequired, total=False):
     legal_hold: bool
 
 
-class SetBucketObjectLockResponse(TypedDict):
+class PutObjectLockResponse(TypedDict):
     ok: bool
 
 
@@ -5409,6 +5491,33 @@ class PutBucketObjectVisibilityResponse(TypedDict):
     object_public: bool
     public_source: Literal["private", "object", "bucket_prefix"]
     public_url: str
+
+
+class _RestoreBucketObjectVersionBodyRequired(TypedDict):
+    key: str
+
+
+class RestoreBucketObjectVersionBody(_RestoreBucketObjectVersionBodyRequired, total=False):
+    version_id: str
+
+
+class RestoreBucketObjectVersionResponse(TypedDict):
+    key: str
+    action: Literal["copied_version", "removed_delete_marker"]
+    restored_version_id: str
+    version_id: str
+    etag: str
+    last_modified: str
+
+
+class ListBucketMultipartUploadsResponseUploadsItem(TypedDict):
+    key: str
+    upload_id: str
+    initiated: str
+
+
+class ListBucketMultipartUploadsResponse(TypedDict):
+    uploads: List[ListBucketMultipartUploadsResponseUploadsItem]
 
 
 class _StartBucketMultipartUploadBodyRequired(TypedDict):
@@ -5439,6 +5548,22 @@ class SignBucketMultipartPartBody(TypedDict):
 class SignBucketMultipartPartResponse(TypedDict):
     direct: bool
     url: str
+    expires_in_seconds: int
+
+
+class SignBucketMultipartPartsBody(TypedDict):
+    key: str
+    upload_id: str
+    part_numbers: List[int]
+
+
+class SignBucketMultipartPartsResponsePartsItem(TypedDict):
+    part_number: int
+    url: str
+
+
+class SignBucketMultipartPartsResponse(TypedDict):
+    parts: List[SignBucketMultipartPartsResponsePartsItem]
     expires_in_seconds: int
 
 
@@ -5601,6 +5726,88 @@ class PutBucketObjectLockResponse(TypedDict):
     mode: str
     days: int
     years: int
+
+
+class _ListSharedBucketsResponseRequired(TypedDict):
+    data: List[Dict[str, Any]]
+
+
+class ListSharedBucketsResponse(_ListSharedBucketsResponseRequired, total=False):
+    next_cursor: Optional[str]
+
+
+class _ListBucketSharesResponseRequired(TypedDict):
+    data: List[Dict[str, Any]]
+
+
+class ListBucketSharesResponse(_ListBucketSharesResponseRequired, total=False):
+    next_cursor: Optional[str]
+
+
+class _CreateBucketShareBodyRequired(TypedDict):
+    grantee_organization_id: str
+    permissions: Literal["read_only", "write_only", "read_write"]
+
+
+class CreateBucketShareBody(_CreateBucketShareBodyRequired, total=False):
+    prefixes: List[str]
+    expires_at: str
+
+
+class _ListBucketNotificationsResponseRequired(TypedDict):
+    data: List[Dict[str, Any]]
+
+
+class ListBucketNotificationsResponse(_ListBucketNotificationsResponseRequired, total=False):
+    next_cursor: Optional[str]
+
+
+class _CreateBucketNotificationBodyRequired(TypedDict):
+    name: str
+    events: List[Literal["object.created", "object.removed"]]
+    target_type: Literal["webhook", "function"]
+    target_id: str
+
+
+class CreateBucketNotificationBody(_CreateBucketNotificationBodyRequired, total=False):
+    prefix: str
+    suffix: str
+    enabled: bool
+
+
+class UpdateBucketNotificationBody(TypedDict, total=False):
+    events: List[Literal["object.created", "object.removed"]]
+    prefix: str
+    suffix: str
+    enabled: bool
+
+
+class _ListBucketDomainsResponseRequired(TypedDict):
+    data: List[Dict[str, Any]]
+
+
+class ListBucketDomainsResponse(_ListBucketDomainsResponseRequired, total=False):
+    next_cursor: Optional[str]
+
+
+class _CreateBucketDomainBodyRequired(TypedDict):
+    hostname: str
+    certificate_id: str
+
+
+class CreateBucketDomainBody(_CreateBucketDomainBodyRequired, total=False):
+    index_document: str
+    error_document: str
+    spa_mode: bool
+    cache_ttl_seconds: int
+
+
+class UpdateBucketDomainBody(TypedDict, total=False):
+    certificate_id: str
+    index_document: str
+    error_document: str
+    spa_mode: bool
+    cache_ttl_seconds: int
 
 
 class OpenInstanceConsoleResponse(TypedDict):

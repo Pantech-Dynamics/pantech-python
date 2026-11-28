@@ -453,3 +453,368 @@ def test_request_rejects_both_body_and_content(make_client) -> None:  # type: ig
     rec = Recorder(json_response(200, {}))
     with pytest.raises(ValueError, match="body or content"):
         make_client(rec).request("PUT", "/buckets/bkt_1/objects/upload", body={"a": 1}, content=b"raw")
+
+
+def test_settings_key_scopes_and_bucket_encryption_sync(make_client) -> None:  # type: ignore[no-untyped-def]
+    scoped_key = sample_key(
+        name="device-uploader",
+        read_only=False,
+        permissions="write_only",
+        buckets=["app-assets"],
+        prefixes=["uploads/"],
+        expires_at="2027-01-01T00:00:00Z",
+        secret_access_key=SECRET_ACCESS_KEY,
+        endpoint="https://s3.af-abj.pantechdynamics.com",
+    )
+    rec = Recorder(
+        json_response(
+            200,
+            {
+                "enabled": True,
+                "endpoint": "https://s3.af-abj.pantechdynamics.com",
+                "beta": True,
+                "block_public_access": False,
+            },
+        ),
+        json_response(200, {"block_public_access": True}),
+        json_response(201, scoped_key),
+        json_response(201, sample_bucket(name="encrypted-assets", encryption="sse_s3", operation_id="op_1")),
+        json_response(200, sample_bucket(encryption="none", operation_id="op_2")),
+        json_response(200, {"key": "secret.bin", "size_bytes": 12, "server_side_encryption": "AES256"}),
+    )
+    client = make_client(rec)
+
+    assert client.object_storage.get_status()["block_public_access"] is False
+    assert client.object_storage.update_settings(block_public_access=True)["block_public_access"] is True
+    key = client.object_storage.keys.create(
+        name="device-uploader",
+        region="af-abj",
+        permissions="write_only",
+        buckets=["app-assets"],
+        prefixes=["uploads/"],
+        expires_at="2027-01-01T00:00:00Z",
+    )
+    assert key["permissions"] == "write_only"
+    assert key["prefixes"] == ["uploads/"]
+    assert key["expires_at"] == "2027-01-01T00:00:00Z"
+    assert key["secret_access_key"] == SECRET_ACCESS_KEY
+    assert SECRET_ACCESS_KEY not in repr(key)
+
+    created = client.buckets.create(name="encrypted-assets", region="af-abj", encryption="sse_s3")
+    assert created["encryption"] == "sse_s3"
+    updated = client.buckets.update("bkt_1", encryption="none")
+    assert updated["encryption"] == "none"
+    meta = client.buckets.objects.get_meta("bkt_1", key="secret.bin")
+    assert meta["server_side_encryption"] == "AES256"
+
+    assert [(r.method, r.url.path) for r in rec.requests] == [
+        ("GET", "/public/v1/object-storage"),
+        ("PATCH", "/public/v1/object-storage/settings"),
+        ("POST", "/public/v1/object-storage/keys"),
+        ("POST", "/public/v1/buckets"),
+        ("PATCH", "/public/v1/buckets/bkt_1"),
+        ("GET", "/public/v1/buckets/bkt_1/objects/meta"),
+    ]
+    assert body(rec.requests[1]) == {"block_public_access": True}
+    assert body(rec.requests[2]) == {
+        "name": "device-uploader",
+        "region": "af-abj",
+        "permissions": "write_only",
+        "buckets": ["app-assets"],
+        "prefixes": ["uploads/"],
+        "expires_at": "2027-01-01T00:00:00Z",
+    }
+    assert body(rec.requests[3]) == {"name": "encrypted-assets", "region": "af-abj", "encryption": "sse_s3"}
+    assert body(rec.requests[4]) == {"encryption": "none"}
+
+
+async def test_settings_key_scopes_and_bucket_encryption_async(make_async_client) -> None:  # type: ignore[no-untyped-def]
+    rec = Recorder(
+        json_response(200, {"block_public_access": False}),
+        json_response(
+            201,
+            sample_key(
+                permissions="read_only",
+                prefixes=["public/"],
+                expires_at=None,
+                secret_access_key=SECRET_ACCESS_KEY,
+                endpoint="https://s3.af-abj.pantechdynamics.com",
+            ),
+        ),
+        json_response(201, sample_bucket(encryption="sse_s3", operation_id="op_3")),
+    )
+    client = make_async_client(rec)
+
+    assert (await client.object_storage.update_settings(block_public_access=False))["block_public_access"] is False
+    key = await client.object_storage.keys.create(name="reader", permissions="read_only", prefixes=["public/"])
+    assert key["permissions"] == "read_only"
+    assert SECRET_ACCESS_KEY not in repr(key)
+    assert (await client.buckets.create(name="app-assets", encryption="sse_s3"))["encryption"] == "sse_s3"
+
+
+def test_upload_form_restore_version_and_multipart_batch_sync(make_client) -> None:  # type: ignore[no-untyped-def]
+    rec = Recorder(
+        json_response(
+            200,
+            {
+                "url": "https://s3.af-abj.pantechdynamics.com/app-assets",
+                "fields": {"key": "uploads/${filename}", "policy": "eyJ..."},
+                "expires_at": "2026-11-28T14:00:00Z",
+                "bucket_name": "app-assets",
+            },
+        ),
+        json_response(
+            200,
+            {
+                "key": "docs/spec.pdf",
+                "action": "copied_version",
+                "restored_version_id": "v1",
+                "version_id": "v3",
+                "etag": '"e1"',
+                "last_modified": "2026-11-28T13:00:00Z",
+            },
+        ),
+        json_response(
+            200,
+            {"uploads": [{"key": "big.bin", "upload_id": "up_1", "initiated": "2026-11-28T12:00:00Z"}]},
+        ),
+        json_response(
+            200,
+            {
+                "parts": [
+                    {"part_number": 1, "url": "https://s3.test/part1"},
+                    {"part_number": 2, "url": "https://s3.test/part2"},
+                ],
+                "expires_in_seconds": 900,
+            },
+        ),
+    )
+    client = make_client(rec)
+
+    form = client.buckets.objects.create_upload_form(
+        "bkt_1",
+        key_prefix="uploads/",
+        min_bytes=1,
+        max_bytes=10485760,
+        content_type="image/png",
+        expires_in_seconds=900,
+    )
+    assert form["bucket_name"] == "app-assets"
+    assert form["fields"]["key"] == "uploads/${filename}"
+
+    restored = client.buckets.objects.restore_version("bkt_1", key="docs/spec.pdf", version_id="v1")
+    assert restored["action"] == "copied_version"
+    assert restored["restored_version_id"] == "v1"
+
+    uploads = client.buckets.multipart.list("bkt_1")
+    assert uploads["uploads"][0]["upload_id"] == "up_1"
+
+    signed = client.buckets.multipart.sign_parts("bkt_1", key="big.bin", upload_id="up_1", part_numbers=[1, 2])
+    assert [p["part_number"] for p in signed["parts"]] == [1, 2]
+
+    assert [(r.method, r.url.path) for r in rec.requests] == [
+        ("POST", "/public/v1/buckets/bkt_1/objects/upload-form"),
+        ("POST", "/public/v1/buckets/bkt_1/objects/restore-version"),
+        ("GET", "/public/v1/buckets/bkt_1/objects/multipart"),
+        ("POST", "/public/v1/buckets/bkt_1/objects/multipart/sign-parts"),
+    ]
+    assert body(rec.requests[0]) == {
+        "key_prefix": "uploads/",
+        "min_bytes": 1,
+        "max_bytes": 10485760,
+        "content_type": "image/png",
+        "expires_in_seconds": 900,
+    }
+    assert body(rec.requests[1]) == {"key": "docs/spec.pdf", "version_id": "v1"}
+    assert body(rec.requests[3]) == {"key": "big.bin", "upload_id": "up_1", "part_numbers": [1, 2]}
+
+
+async def test_upload_form_restore_version_and_multipart_batch_async(make_async_client) -> None:  # type: ignore[no-untyped-def]
+    rec = Recorder(
+        json_response(
+            200,
+            {
+                "url": "https://s3.af-abj.pantechdynamics.com/app-assets",
+                "fields": {"key": "avatar.png"},
+                "expires_at": "2026-11-28T14:00:00Z",
+                "bucket_name": "app-assets",
+            },
+        ),
+        json_response(
+            200,
+            {
+                "key": "deleted.txt",
+                "action": "removed_delete_marker",
+                "restored_version_id": "dm_1",
+                "version_id": "v1",
+                "etag": '"e1"',
+                "last_modified": "2026-11-28T13:00:00Z",
+            },
+        ),
+        json_response(200, {"uploads": []}),
+        json_response(200, {"parts": [{"part_number": 1, "url": "https://s3.test/p1"}], "expires_in_seconds": 900}),
+    )
+    client = make_async_client(rec)
+
+    assert (await client.buckets.objects.create_upload_form("bkt_1", key="avatar.png"))["fields"]["key"] == "avatar.png"
+    assert (await client.buckets.objects.restore_version("bkt_1", key="deleted.txt"))["action"] == (
+        "removed_delete_marker"
+    )
+    assert (await client.buckets.multipart.list("bkt_1"))["uploads"] == []
+    assert (await client.buckets.multipart.sign_parts("bkt_1", key="big.bin", upload_id="up_1", part_numbers=[1]))[
+        "parts"
+    ][0]["part_number"] == 1
+
+
+def test_shared_buckets_shares_notifications_and_domains_sync(make_client) -> None:  # type: ignore[no-untyped-def]
+    rec = Recorder(
+        json_response(200, {"data": [{"bucket_id": "bkt_shared_1"}], "next_cursor": "cur_2"}),
+        json_response(200, {"data": [{"bucket_id": "bkt_shared_2"}], "next_cursor": None}),
+        json_response(200, {"data": [{"id": "shr_1", "grantee_organization_id": "org_2"}], "next_cursor": None}),
+        json_response(201, {"id": "shr_2", "grantee_organization_id": "org_2", "permissions": "read_only"}),
+        httpx.Response(204),
+        json_response(200, {"data": [{"id": "ntf_1", "name": "on-upload"}], "next_cursor": None}),
+        json_response(201, {"id": "ntf_1", "name": "on-upload", "enabled": True}),
+        json_response(200, {"id": "ntf_1", "name": "on-upload", "enabled": False}),
+        httpx.Response(204),
+        json_response(200, {"data": [{"id": "bdom_1", "hostname": "cdn.example.com"}], "next_cursor": None}),
+        json_response(201, {"id": "bdom_1", "hostname": "cdn.example.com", "spa_mode": True}),
+        json_response(200, {"id": "bdom_1", "hostname": "cdn.example.com", "spa_mode": False}),
+        httpx.Response(204),
+    )
+    client = make_client(rec)
+
+    shared = list(client.buckets.list_all_shared())
+    assert [b["bucket_id"] for b in shared] == ["bkt_shared_1", "bkt_shared_2"]
+
+    assert client.buckets.shares.list("bkt_1")["data"][0]["id"] == "shr_1"
+    share = client.buckets.shares.create(
+        "bkt_1",
+        grantee_organization_id="org_2",
+        permissions="read_only",
+        prefixes=["reports/"],
+        expires_at="2027-01-01T00:00:00Z",
+    )
+    assert share["id"] == "shr_2"
+    assert client.buckets.shares.revoke("bkt_1", "shr_2") is None
+
+    assert client.buckets.notifications.list("bkt_1")["data"][0]["id"] == "ntf_1"
+    notif = client.buckets.notifications.create(
+        "bkt_1",
+        name="on-upload",
+        events=["object.created"],
+        prefix="uploads/",
+        suffix=".jpg",
+        target_type="webhook",
+        target_id="wh_1",
+        enabled=True,
+    )
+    assert notif["id"] == "ntf_1"
+    notif_upd = client.buckets.notifications.update(
+        "bkt_1",
+        "ntf_1",
+        events=["object.created", "object.removed"],
+        enabled=False,
+    )
+    assert notif_upd["enabled"] is False
+    assert client.buckets.notifications.delete("bkt_1", "ntf_1") is None
+
+    assert client.buckets.domains.list("bkt_1")["data"][0]["id"] == "bdom_1"
+    dom = client.buckets.domains.create(
+        "bkt_1",
+        hostname="cdn.example.com",
+        certificate_id="cert_1",
+        index_document="index.html",
+        error_document="404.html",
+        spa_mode=True,
+        cache_ttl_seconds=3600,
+    )
+    assert dom["spa_mode"] is True
+    dom_upd = client.buckets.domains.update(
+        "bkt_1",
+        "bdom_1",
+        certificate_id="cert_2",
+        spa_mode=False,
+        cache_ttl_seconds=600,
+    )
+    assert dom_upd["spa_mode"] is False
+    assert client.buckets.domains.delete("bkt_1", "bdom_1") is None
+
+    assert [(r.method, r.url.path) for r in rec.requests] == [
+        ("GET", "/public/v1/buckets/shared"),
+        ("GET", "/public/v1/buckets/shared"),
+        ("GET", "/public/v1/buckets/bkt_1/shares"),
+        ("POST", "/public/v1/buckets/bkt_1/shares"),
+        ("DELETE", "/public/v1/buckets/bkt_1/shares/shr_2"),
+        ("GET", "/public/v1/buckets/bkt_1/notifications"),
+        ("POST", "/public/v1/buckets/bkt_1/notifications"),
+        ("PATCH", "/public/v1/buckets/bkt_1/notifications/ntf_1"),
+        ("DELETE", "/public/v1/buckets/bkt_1/notifications/ntf_1"),
+        ("GET", "/public/v1/buckets/bkt_1/domains"),
+        ("POST", "/public/v1/buckets/bkt_1/domains"),
+        ("PATCH", "/public/v1/buckets/bkt_1/domains/bdom_1"),
+        ("DELETE", "/public/v1/buckets/bkt_1/domains/bdom_1"),
+    ]
+    assert rec.requests[1].url.params["cursor"] == "cur_2"
+    assert body(rec.requests[3]) == {
+        "grantee_organization_id": "org_2",
+        "permissions": "read_only",
+        "prefixes": ["reports/"],
+        "expires_at": "2027-01-01T00:00:00Z",
+    }
+    assert body(rec.requests[6]) == {
+        "name": "on-upload",
+        "events": ["object.created"],
+        "prefix": "uploads/",
+        "suffix": ".jpg",
+        "target_type": "webhook",
+        "target_id": "wh_1",
+        "enabled": True,
+    }
+    assert body(rec.requests[7]) == {"events": ["object.created", "object.removed"], "enabled": False}
+    assert body(rec.requests[10]) == {
+        "hostname": "cdn.example.com",
+        "certificate_id": "cert_1",
+        "index_document": "index.html",
+        "error_document": "404.html",
+        "spa_mode": True,
+        "cache_ttl_seconds": 3600,
+    }
+    assert body(rec.requests[11]) == {"certificate_id": "cert_2", "spa_mode": False, "cache_ttl_seconds": 600}
+
+
+async def test_shared_buckets_shares_notifications_and_domains_async(make_async_client) -> None:  # type: ignore[no-untyped-def]
+    rec = Recorder(
+        json_response(200, {"data": [{"bucket_id": "bkt_shared_1"}], "next_cursor": None}),
+        json_response(201, {"id": "shr_1"}),
+        httpx.Response(204),
+        json_response(201, {"id": "ntf_1"}),
+        json_response(200, {"id": "ntf_1", "enabled": False}),
+        httpx.Response(204),
+        json_response(201, {"id": "bdom_1"}),
+        json_response(200, {"id": "bdom_1", "cache_ttl_seconds": 120}),
+        httpx.Response(204),
+    )
+    client = make_async_client(rec)
+
+    assert (await client.buckets.list_shared())["data"][0]["bucket_id"] == "bkt_shared_1"
+    assert (await client.buckets.shares.create("bkt_1", grantee_organization_id="org_2", permissions="read_write"))[
+        "id"
+    ] == "shr_1"
+    assert await client.buckets.shares.revoke("bkt_1", "shr_1") is None
+    assert (
+        await client.buckets.notifications.create(
+            "bkt_1",
+            name="fn-hook",
+            events=["object.created"],
+            target_type="function",
+            target_id="fn_1",
+        )
+    )["id"] == "ntf_1"
+    assert (await client.buckets.notifications.update("bkt_1", "ntf_1", enabled=False))["enabled"] is False
+    assert await client.buckets.notifications.delete("bkt_1", "ntf_1") is None
+    assert (await client.buckets.domains.create("bkt_1", hostname="static.example.com", certificate_id="cert_1"))[
+        "id"
+    ] == "bdom_1"
+    assert (await client.buckets.domains.update("bkt_1", "bdom_1", cache_ttl_seconds=120))["cache_ttl_seconds"] == 120
+    assert await client.buckets.domains.delete("bkt_1", "bdom_1") is None

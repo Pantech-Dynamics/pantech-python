@@ -49,6 +49,7 @@ from ..types._generated import (
     CopyAccess,
     CopyBucketObjectResponse,
     CreateBucketFolderResponse,
+    CreateBucketUploadFormResponse,
     CreatedBucket,
     CreatedObjectStorageKey,
     CreateInstanceRequestAddressRotation,
@@ -139,7 +140,12 @@ from ..types._generated import (
     KubernetesNodePoolList,
     KubernetesNodePoolTaint,
     KubernetesVersionList,
+    ListBucketDomainsResponse,
+    ListBucketMultipartUploadsResponse,
+    ListBucketNotificationsResponse,
+    ListBucketSharesResponse,
     ListKubernetesClusterNodesResponse,
+    ListSharedBucketsResponse,
     LoadBalancer,
     LoadBalancerList,
     Me,
@@ -152,6 +158,7 @@ from ..types._generated import (
     Network,
     NetworkList,
     ObjectStorageKeyList,
+    ObjectStorageSettings,
     ObjectStorageStatus,
     OpenInstanceConsoleResponse,
     Operation,
@@ -177,6 +184,7 @@ from ..types._generated import (
     PutBucketObjectVisibilityResponse,
     PutBucketTagsBodyTagsItem,
     PutBucketTagsResponse,
+    PutObjectLockResponse,
     QuoteDiskOfferingResponse,
     Receipt,
     ReceiptList,
@@ -191,6 +199,7 @@ from ..types._generated import (
     RegistryToken,
     RegistryTokenList,
     RegistryTokenWithSecret,
+    RestoreBucketObjectVersionResponse,
     SecurityGroup,
     SecurityGroupList,
     SecurityGroupRule,
@@ -198,8 +207,8 @@ from ..types._generated import (
     ServerCopyAWSSource,
     ServerCopyList,
     ServerCopyTemplate,
-    SetBucketObjectLockResponse,
     SignBucketMultipartPartResponse,
+    SignBucketMultipartPartsResponse,
     Snapshot,
     SnapshotList,
     SnapshotSchedule,
@@ -10990,7 +10999,10 @@ class AsyncObjectStorageKeysResource(AsyncResource):
         name: str,
         region: Union[str, NotGiven] = NOT_GIVEN,
         read_only: Union[bool, NotGiven] = NOT_GIVEN,
+        permissions: Union[Literal["read_only", "read_write", "write_only"], NotGiven] = NOT_GIVEN,
         buckets: Union[List[str], NotGiven] = NOT_GIVEN,
+        prefixes: Union[List[str], NotGiven] = NOT_GIVEN,
+        expires_at: Union[str, NotGiven] = NOT_GIVEN,
         idempotency_key: Optional[str] = None,
         extra_headers: Optional[Headers] = None,
         extra_query: Optional[Query] = None,
@@ -11007,7 +11019,12 @@ class AsyncObjectStorageKeysResource(AsyncResource):
           name: 1 to 64 letters, digits, `-`, `_` or `.`.
           region: The region code. Defaults to the region object storage is offered in.
           read_only: Allow only reading and listing.
+          permissions: What the key may do.
           buckets: Limit the key to these bucket names; absent or empty is every bucket.
+          prefixes: Limit the key to object keys under these prefixes, such as `uploads/`;
+              absent or empty is every object.
+          expires_at: When the key stops working, RFC 3339, in the future and at most 10
+              years ahead.
         """
         return cast(
             "CreatedObjectStorageKey",
@@ -11017,7 +11034,16 @@ class AsyncObjectStorageKeysResource(AsyncResource):
                     "/object-storage/keys",
                     query=merge_params({}, extra_query),
                     body=merge_params(
-                        {"name": name, "region": region, "read_only": read_only, "buckets": buckets}, extra_body
+                        {
+                            "name": name,
+                            "region": region,
+                            "read_only": read_only,
+                            "permissions": permissions,
+                            "buckets": buckets,
+                            "prefixes": prefixes,
+                            "expires_at": expires_at,
+                        },
+                        extra_body,
                     ),
                     idempotency_key=idempotency_key,
                     no_replay=True,
@@ -11055,7 +11081,7 @@ class AsyncObjectStorageKeysResource(AsyncResource):
 
 
 class AsyncObjectStorageResource(AsyncResource):
-    """S3-compatible object storage: availability, usage, and access keys."""
+    """S3-compatible object storage: availability, usage, settings, and access keys."""
 
     keys: AsyncObjectStorageKeysResource
 
@@ -11108,9 +11134,454 @@ class AsyncObjectStorageResource(AsyncResource):
             ),
         )
 
+    async def update_settings(
+        self,
+        *,
+        block_public_access: bool,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> ObjectStorageSettings:
+        """Change object storage settings.
+
+        ``PATCH /object-storage/settings``
+
+        Args:
+          block_public_access: True blocks all public access: public prefixes and public
+              objects stop being served anonymously, and nothing can be made public until it is
+              turned off.
+        """
+        return cast(
+            "ObjectStorageSettings",
+            await self._client.request(
+                "PATCH",
+                "/object-storage/settings",
+                query=merge_params({}, extra_query),
+                body=merge_params({"block_public_access": block_public_access}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+
+class AsyncBucketsSharesResource(AsyncResource):
+    """Cross-organization shares on a bucket."""
+
+    async def list(
+        self,
+        bucket_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> ListBucketSharesResponse:
+        """List bucket shares.
+
+        ``GET /buckets/{bucket_id}/shares``
+        """
+        return cast(
+            "ListBucketSharesResponse",
+            await self._client.request(
+                "GET",
+                f"/buckets/{path_param(bucket_id)}/shares",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list_all(
+        self,
+        bucket_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """List bucket shares, following ``next_cursor`` through every page.
+
+        ``GET /buckets/{bucket_id}/shares``
+        """
+        return self._client._paginate(
+            f"/buckets/{path_param(bucket_id)}/shares",
+            query=merge_params({}, extra_query),
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+
+    async def create(
+        self,
+        bucket_id: str,
+        *,
+        grantee_organization_id: str,
+        permissions: Literal["read_only", "write_only", "read_write"],
+        prefixes: Union[List[str], NotGiven] = NOT_GIVEN,
+        expires_at: Union[str, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Dict[str, Any]:
+        """Share bucket with another organization.
+
+        ``POST /buckets/{bucket_id}/shares``
+        """
+        return cast(
+            "Dict[str, Any]",
+            await self._client.request(
+                "POST",
+                f"/buckets/{path_param(bucket_id)}/shares",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {
+                        "grantee_organization_id": grantee_organization_id,
+                        "permissions": permissions,
+                        "prefixes": prefixes,
+                        "expires_at": expires_at,
+                    },
+                    extra_body,
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    async def revoke(
+        self,
+        bucket_id: str,
+        share_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> None:
+        """Revoke a bucket share.
+
+        ``DELETE /buckets/{bucket_id}/shares/{share_id}``
+        """
+        await self._client.request(
+            "DELETE",
+            f"/buckets/{path_param(bucket_id)}/shares/{path_param(share_id)}",
+            query=merge_params({}, extra_query),
+            idempotency_key=idempotency_key,
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+        return None
+
+
+class AsyncBucketsNotificationsResource(AsyncResource):
+    """Object event notification rules on a bucket."""
+
+    async def list(
+        self,
+        bucket_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> ListBucketNotificationsResponse:
+        """List bucket event notifications.
+
+        ``GET /buckets/{bucket_id}/notifications``
+        """
+        return cast(
+            "ListBucketNotificationsResponse",
+            await self._client.request(
+                "GET",
+                f"/buckets/{path_param(bucket_id)}/notifications",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list_all(
+        self,
+        bucket_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """List bucket event notifications, following ``next_cursor`` through every page.
+
+        ``GET /buckets/{bucket_id}/notifications``
+        """
+        return self._client._paginate(
+            f"/buckets/{path_param(bucket_id)}/notifications",
+            query=merge_params({}, extra_query),
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+
+    async def create(
+        self,
+        bucket_id: str,
+        *,
+        name: str,
+        events: List[Literal["object.created", "object.removed"]],
+        target_type: Literal["webhook", "function"],
+        target_id: str,
+        prefix: Union[str, NotGiven] = NOT_GIVEN,
+        suffix: Union[str, NotGiven] = NOT_GIVEN,
+        enabled: Union[bool, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Dict[str, Any]:
+        """Create a bucket notification rule.
+
+        ``POST /buckets/{bucket_id}/notifications``
+        """
+        return cast(
+            "Dict[str, Any]",
+            await self._client.request(
+                "POST",
+                f"/buckets/{path_param(bucket_id)}/notifications",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {
+                        "name": name,
+                        "events": events,
+                        "prefix": prefix,
+                        "suffix": suffix,
+                        "target_type": target_type,
+                        "target_id": target_id,
+                        "enabled": enabled,
+                    },
+                    extra_body,
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    async def update(
+        self,
+        bucket_id: str,
+        notification_id: str,
+        *,
+        events: Union[List[Literal["object.created", "object.removed"]], NotGiven] = NOT_GIVEN,
+        prefix: Union[str, NotGiven] = NOT_GIVEN,
+        suffix: Union[str, NotGiven] = NOT_GIVEN,
+        enabled: Union[bool, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Dict[str, Any]:
+        """Update a bucket notification rule.
+
+        ``PATCH /buckets/{bucket_id}/notifications/{notification_id}``
+        """
+        return cast(
+            "Dict[str, Any]",
+            await self._client.request(
+                "PATCH",
+                f"/buckets/{path_param(bucket_id)}/notifications/{path_param(notification_id)}",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {"events": events, "prefix": prefix, "suffix": suffix, "enabled": enabled}, extra_body
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    async def delete(
+        self,
+        bucket_id: str,
+        notification_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> None:
+        """Delete a bucket notification rule.
+
+        ``DELETE /buckets/{bucket_id}/notifications/{notification_id}``
+        """
+        await self._client.request(
+            "DELETE",
+            f"/buckets/{path_param(bucket_id)}/notifications/{path_param(notification_id)}",
+            query=merge_params({}, extra_query),
+            idempotency_key=idempotency_key,
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+        return None
+
+
+class AsyncBucketsDomainsResource(AsyncResource):
+    """Custom domains and static website settings on a bucket."""
+
+    async def list(
+        self,
+        bucket_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> ListBucketDomainsResponse:
+        """List bucket custom domains.
+
+        ``GET /buckets/{bucket_id}/domains``
+        """
+        return cast(
+            "ListBucketDomainsResponse",
+            await self._client.request(
+                "GET",
+                f"/buckets/{path_param(bucket_id)}/domains",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list_all(
+        self,
+        bucket_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """List bucket custom domains, following ``next_cursor`` through every page.
+
+        ``GET /buckets/{bucket_id}/domains``
+        """
+        return self._client._paginate(
+            f"/buckets/{path_param(bucket_id)}/domains",
+            query=merge_params({}, extra_query),
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+
+    async def create(
+        self,
+        bucket_id: str,
+        *,
+        hostname: str,
+        certificate_id: str,
+        index_document: Union[str, NotGiven] = NOT_GIVEN,
+        error_document: Union[str, NotGiven] = NOT_GIVEN,
+        spa_mode: Union[bool, NotGiven] = NOT_GIVEN,
+        cache_ttl_seconds: Union[int, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Dict[str, Any]:
+        """Attach a custom domain to a bucket.
+
+        ``POST /buckets/{bucket_id}/domains``
+        """
+        return cast(
+            "Dict[str, Any]",
+            await self._client.request(
+                "POST",
+                f"/buckets/{path_param(bucket_id)}/domains",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {
+                        "hostname": hostname,
+                        "certificate_id": certificate_id,
+                        "index_document": index_document,
+                        "error_document": error_document,
+                        "spa_mode": spa_mode,
+                        "cache_ttl_seconds": cache_ttl_seconds,
+                    },
+                    extra_body,
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    async def update(
+        self,
+        bucket_id: str,
+        domain_id: str,
+        *,
+        certificate_id: Union[str, NotGiven] = NOT_GIVEN,
+        index_document: Union[str, NotGiven] = NOT_GIVEN,
+        error_document: Union[str, NotGiven] = NOT_GIVEN,
+        spa_mode: Union[bool, NotGiven] = NOT_GIVEN,
+        cache_ttl_seconds: Union[int, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> Dict[str, Any]:
+        """Update a bucket custom domain.
+
+        ``PATCH /buckets/{bucket_id}/domains/{domain_id}``
+        """
+        return cast(
+            "Dict[str, Any]",
+            await self._client.request(
+                "PATCH",
+                f"/buckets/{path_param(bucket_id)}/domains/{path_param(domain_id)}",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {
+                        "certificate_id": certificate_id,
+                        "index_document": index_document,
+                        "error_document": error_document,
+                        "spa_mode": spa_mode,
+                        "cache_ttl_seconds": cache_ttl_seconds,
+                    },
+                    extra_body,
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    async def delete(
+        self,
+        bucket_id: str,
+        domain_id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> None:
+        """Detach a bucket custom domain.
+
+        ``DELETE /buckets/{bucket_id}/domains/{domain_id}``
+        """
+        await self._client.request(
+            "DELETE",
+            f"/buckets/{path_param(bucket_id)}/domains/{path_param(domain_id)}",
+            query=merge_params({}, extra_query),
+            idempotency_key=idempotency_key,
+            extra_headers=extra_headers,
+            timeout=timeout,
+        )
+        return None
+
 
 class AsyncBucketsObjectsResource(AsyncResource):
-    """Bucket objects: list, upload, download, presign, copy, delete, tags, lock, and visibility."""
+    """Bucket objects: list, upload, download, presign, upload forms, copy, delete, tags, lock, visibility, and version restore."""
 
     async def list(
         self,
@@ -11300,6 +11771,58 @@ class AsyncBucketsObjectsResource(AsyncResource):
             ),
         )
 
+    async def create_upload_form(
+        self,
+        bucket_id: str,
+        *,
+        key: Union[str, NotGiven] = NOT_GIVEN,
+        key_prefix: Union[str, NotGiven] = NOT_GIVEN,
+        min_bytes: Union[int, NotGiven] = NOT_GIVEN,
+        max_bytes: Union[int, NotGiven] = NOT_GIVEN,
+        content_type: Union[str, NotGiven] = NOT_GIVEN,
+        expires_in_seconds: Union[int, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> CreateBucketUploadFormResponse:
+        """Create a browser upload form.
+
+        ``POST /buckets/{bucket_id}/objects/upload-form``
+
+        Args:
+          key: The one key the form may write.
+          key_prefix: The form may write any key starting with this, ending in the browser's
+              file name.
+          min_bytes: The smallest file accepted.
+          max_bytes: The largest file accepted, at most 5 GiB.
+          content_type: When set, the only content type the form may send.
+          expires_in_seconds: How long the form works: 60 seconds to 7 days.
+        """
+        return cast(
+            "CreateBucketUploadFormResponse",
+            await self._client.request(
+                "POST",
+                f"/buckets/{path_param(bucket_id)}/objects/upload-form",
+                query=merge_params({}, extra_query),
+                body=merge_params(
+                    {
+                        "key": key,
+                        "key_prefix": key_prefix,
+                        "min_bytes": min_bytes,
+                        "max_bytes": max_bytes,
+                        "content_type": content_type,
+                        "expires_in_seconds": expires_in_seconds,
+                    },
+                    extra_body,
+                ),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
     async def create_folder(
         self,
         bucket_id: str,
@@ -11449,13 +11972,13 @@ class AsyncBucketsObjectsResource(AsyncResource):
         extra_query: Optional[Query] = None,
         extra_body: Optional[Body] = None,
         timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
-    ) -> SetBucketObjectLockResponse:
+    ) -> PutObjectLockResponse:
         """Update retention or legal hold on an object.
 
         ``PUT /buckets/{bucket_id}/objects/lock``
         """
         return cast(
-            "SetBucketObjectLockResponse",
+            "PutObjectLockResponse",
             await self._client.request(
                 "PUT",
                 f"/buckets/{path_param(bucket_id)}/objects/lock",
@@ -11507,9 +12030,61 @@ class AsyncBucketsObjectsResource(AsyncResource):
             ),
         )
 
+    async def restore_version(
+        self,
+        bucket_id: str,
+        *,
+        key: str,
+        version_id: Union[str, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> RestoreBucketObjectVersionResponse:
+        """Restore a previous object version or remove a delete marker.
+
+        ``POST /buckets/{bucket_id}/objects/restore-version``
+        """
+        return cast(
+            "RestoreBucketObjectVersionResponse",
+            await self._client.request(
+                "POST",
+                f"/buckets/{path_param(bucket_id)}/objects/restore-version",
+                query=merge_params({}, extra_query),
+                body=merge_params({"key": key, "version_id": version_id}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
 
 class AsyncBucketsMultipartResource(AsyncResource):
     """Multipart uploads for large objects."""
+
+    async def list(
+        self,
+        bucket_id: str,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> ListBucketMultipartUploadsResponse:
+        """List in-progress multipart uploads.
+
+        ``GET /buckets/{bucket_id}/objects/multipart``
+        """
+        return cast(
+            "ListBucketMultipartUploadsResponse",
+            await self._client.request(
+                "GET",
+                f"/buckets/{path_param(bucket_id)}/objects/multipart",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
 
     async def start(
         self,
@@ -11583,6 +12158,36 @@ class AsyncBucketsMultipartResource(AsyncResource):
                 f"/buckets/{path_param(bucket_id)}/objects/multipart/sign-part",
                 query=merge_params({}, extra_query),
                 body=merge_params({"key": key, "upload_id": upload_id, "part_number": part_number}, extra_body),
+                idempotency_key=idempotency_key,
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    async def sign_parts(
+        self,
+        bucket_id: str,
+        *,
+        key: str,
+        upload_id: str,
+        part_numbers: List[int],
+        idempotency_key: Optional[str] = None,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        extra_body: Optional[Body] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> SignBucketMultipartPartsResponse:
+        """Batch-sign direct upload URLs for multiple multipart parts.
+
+        ``POST /buckets/{bucket_id}/objects/multipart/sign-parts``
+        """
+        return cast(
+            "SignBucketMultipartPartsResponse",
+            await self._client.request(
+                "POST",
+                f"/buckets/{path_param(bucket_id)}/objects/multipart/sign-parts",
+                query=merge_params({}, extra_query),
+                body=merge_params({"key": key, "upload_id": upload_id, "part_numbers": part_numbers}, extra_body),
                 idempotency_key=idempotency_key,
                 extra_headers=extra_headers,
                 timeout=timeout,
@@ -11687,13 +12292,19 @@ class AsyncBucketsMultipartResource(AsyncResource):
 
 
 class AsyncBucketsResource(AsyncResource):
-    """Object storage buckets: lifecycle, CORS, tags, object lock, and stats."""
+    """Object storage buckets: encryption, lifecycle, CORS, tags, object lock, shares, notifications, domains, and stats."""
 
+    shares: AsyncBucketsSharesResource
+    notifications: AsyncBucketsNotificationsResource
+    domains: AsyncBucketsDomainsResource
     objects: AsyncBucketsObjectsResource
     multipart: AsyncBucketsMultipartResource
 
     def __init__(self, client: AsyncAPIClient) -> None:
         super().__init__(client)
+        self.shares = AsyncBucketsSharesResource(client)
+        self.notifications = AsyncBucketsNotificationsResource(client)
+        self.domains = AsyncBucketsDomainsResource(client)
         self.objects = AsyncBucketsObjectsResource(client)
         self.multipart = AsyncBucketsMultipartResource(client)
 
@@ -11719,6 +12330,43 @@ class AsyncBucketsResource(AsyncResource):
             ),
         )
 
+    async def list_shared(
+        self,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> ListSharedBucketsResponse:
+        """List shared buckets.
+
+        ``GET /buckets/shared``
+        """
+        return cast(
+            "ListSharedBucketsResponse",
+            await self._client.request(
+                "GET",
+                "/buckets/shared",
+                query=merge_params({}, extra_query),
+                extra_headers=extra_headers,
+                timeout=timeout,
+            ),
+        )
+
+    def list_all_shared(
+        self,
+        *,
+        extra_headers: Optional[Headers] = None,
+        extra_query: Optional[Query] = None,
+        timeout: Union[Timeout, NotGiven] = NOT_GIVEN,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """List shared buckets, following ``next_cursor`` through every page.
+
+        ``GET /buckets/shared``
+        """
+        return self._client._paginate(
+            "/buckets/shared", query=merge_params({}, extra_query), extra_headers=extra_headers, timeout=timeout
+        )
+
     async def create(
         self,
         *,
@@ -11727,6 +12375,7 @@ class AsyncBucketsResource(AsyncResource):
         quota_bytes: Union[int, NotGiven] = NOT_GIVEN,
         versioning: Union[bool, NotGiven] = NOT_GIVEN,
         object_lock: Union[bool, NotGiven] = NOT_GIVEN,
+        encryption: Union[Literal["none", "sse_s3"], NotGiven] = NOT_GIVEN,
         public_prefixes: Union[List[str], NotGiven] = NOT_GIVEN,
         idempotency_key: Optional[str] = None,
         extra_headers: Optional[Headers] = None,
@@ -11745,6 +12394,8 @@ class AsyncBucketsResource(AsyncResource):
           quota_bytes: Your own limit on stored bytes; 0 or absent is none.
           versioning: Keep earlier versions of overwritten and deleted objects.
           object_lock: Allow objects to be locked against deletion.
+          encryption: Optional default server-side encryption for new objects (`none` or
+              `sse_s3`).
           public_prefixes: Key prefixes anyone may read without a key, e.g. `public/`.
         """
         return cast(
@@ -11760,6 +12411,7 @@ class AsyncBucketsResource(AsyncResource):
                         "quota_bytes": quota_bytes,
                         "versioning": versioning,
                         "object_lock": object_lock,
+                        "encryption": encryption,
                         "public_prefixes": public_prefixes,
                     },
                     extra_body,
@@ -11802,6 +12454,7 @@ class AsyncBucketsResource(AsyncResource):
         *,
         quota_bytes: Union[int, NotGiven] = NOT_GIVEN,
         versioning: Union[bool, NotGiven] = NOT_GIVEN,
+        encryption: Union[Literal["none", "sse_s3"], NotGiven] = NOT_GIVEN,
         public_prefixes: Union[List[str], NotGiven] = NOT_GIVEN,
         idempotency_key: Optional[str] = None,
         extra_headers: Optional[Headers] = None,
@@ -11817,6 +12470,8 @@ class AsyncBucketsResource(AsyncResource):
           bucket_id: The bucket's id, starting `bkt_`.
           quota_bytes: Your own limit on stored bytes; 0 removes it.
           versioning: Keep earlier versions of overwritten and deleted objects.
+          encryption: Default server-side encryption for newly written objects (`none` or
+              `sse_s3`).
           public_prefixes: Replaces the public prefixes; an empty list makes the bucket
               wholly private.
         """
@@ -11827,7 +12482,12 @@ class AsyncBucketsResource(AsyncResource):
                 f"/buckets/{path_param(bucket_id)}",
                 query=merge_params({}, extra_query),
                 body=merge_params(
-                    {"quota_bytes": quota_bytes, "versioning": versioning, "public_prefixes": public_prefixes},
+                    {
+                        "quota_bytes": quota_bytes,
+                        "versioning": versioning,
+                        "encryption": encryption,
+                        "public_prefixes": public_prefixes,
+                    },
                     extra_body,
                 ),
                 idempotency_key=idempotency_key,

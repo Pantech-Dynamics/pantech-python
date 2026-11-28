@@ -169,8 +169,12 @@ client.buckets.multipart.complete(
 ```
 
 Bucket configuration (`get_cors`/`set_cors`, `get_lifecycle`/`set_lifecycle`, `get_tags`/`set_tags`,
-`get_object_lock`/`set_object_lock`, `get_stats`, `empty`) and organization status/usage
-(`client.object_storage.get_status()`, `client.object_storage.get_usage()`) are available on both
+`get_object_lock`/`set_object_lock`, `encryption`, `get_stats`, `empty`), browser upload forms
+(`buckets.objects.create_upload_form`), version restore (`buckets.objects.restore_version`),
+multipart listing and batch signing (`buckets.multipart.list`, `sign_parts`), cross-organization
+shares (`buckets.list_shared`, `buckets.shares`), event notifications (`buckets.notifications`),
+custom domains (`buckets.domains`), and organization status/usage/settings
+(`client.object_storage.get_status()`, `get_usage()`, `update_settings()`) are available on both
 `Pantech` and `AsyncPantech`.
 
 ### Move from another cloud
